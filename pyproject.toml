@@ -1,0 +1,21 @@
+[project]
+name = "pymyriade"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.2.1",
+    "numpy>=1.22.0",
+    "pandas>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.1",
+    "ruff>=0.12.10",
+]
+
+[project.scripts]
+foocli = "pyMyriade.cli:main"
