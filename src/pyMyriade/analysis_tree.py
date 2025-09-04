@@ -72,20 +72,38 @@ class AnalysisTree(list):
         
         res = dict(zip(res_names, res_lst))
         return DataTree(**res)
+    
+    def split_by(self, expr: str = None, **kwargs):
+        
+        is_split_node = [isinstance(x, SplitNode) for x in self]
+        no_termination = not any([x.termination for x in self if isinstance(x, AnalysisNode)])
+
+        # length 0 OR (no split node and no termination signal)
+        if ((len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination)):
+            self.append(SplitNode(expr = expr, **kwargs))
+        
+        else:
+            for i in range(len(self)):
+                    if isinstance(self[i], SplitNode):
+                        self[i] = self[i].split_by(expr = expr, **kwargs)
+                
+        return self
 
 class SplitNode(list):
     """A subclass of list representing a splitting node.
     Attributes:
         expr (str): The expression describing how data should be split.
+        label (str): The label of the node. By default the `expr` or the keys of `kwargs`.
         kwexpr (dict): A dictionary with the name of the group and the associated expression
             describing how they should be split.
     """
-    def __init__(self, *args, expr:str = None, **kwargs) -> None:
+    def __init__(self, *args, expr:str = None, label:str = None, **kwargs) -> None:
         """
         Initializes the SplitNode object.
         Args:
             *args: Additional positional arguments.
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
+            label (str, optional): The label of the node.
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Raises:
             AssertionError: If neither `expr` nor `kwargs` are provided, or if both are provided.
@@ -102,10 +120,12 @@ class SplitNode(list):
             self.expr = None
             assert len(kwargs) != 0, "Either expr or kwargs must be provided."
             self.kwexpr = kwargs
+            self.label = label or "-".join(kwargs.keys())
         else:
             self.expr = expr
             assert len(kwargs) == 0, "Either expr or kwargs must be provided. Not both."
             self.kwexpr = None
+            self.label = label or expr
 
     def __str__(self, ind: int = 0):
         if self.expr is not None:
@@ -114,7 +134,7 @@ class SplitNode(list):
             expr_lst = [f"{i}: {self.kwexpr[i]} " for i in self.kwexpr.keys()]
             res = "".join(expr_lst) + "\n"
 
-        split_str = (" " * ind) + "Split Node:\n" + (" " * ind) + " |-- " + res
+        split_str = (" " * ind) + f"Split Node {self.label}:\n" + (" " * ind) + " |-- " + res
         recusive_lst = [x.__str__(ind = ind + 2) for x in self]
         recusive_str = "".join(recusive_lst)
 
@@ -165,6 +185,22 @@ class SplitNode(list):
         split_var = self.expr or "::".join(self.kwexpr.keys())
 
         return SplitDataNode(split_var = split_var, **res_dic)
+    
+    def split_by(self, expr: str = None, **kwargs):
+        is_split_node = [isinstance(x, SplitNode) for x in self]
+        no_termination = not any([x.termination for x in self if isinstance(x, AnalysisNode)])
+        
+        # length 0 OR (no split node and no termination signal)
+        if ((len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination)):
+            self.append(SplitNode(expr = expr, **kwargs))
+        
+        else:
+            for i in range(len(self)):
+                    if isinstance(self[i], SplitNode):
+                        self[i] = self[i].split_by(expr = expr, **kwargs)
+                
+        return self
+
 
 class AnalysisNode():
     """A class representing how data should be analyzed.
