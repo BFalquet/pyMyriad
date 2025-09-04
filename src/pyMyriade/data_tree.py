@@ -32,15 +32,19 @@ class DataNode():
         res = [f"{' ' * (ind * 2)}  {k}: {str(v)}\n" for k,v in (self.summary or {}).items()]
         return f"{' ' * (ind * 2)}analysis {self.label}:\n" + "".join(res)
     
-    def __flatten__(self, path = (), depth: int = 0) -> pd.DataFrame:
+    def __flatten__(self, path = (), depth: int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
 
         path = path + ("analysis",)
+        path_pivot = path_pivot + ("analysis",)
         
         return pd.DataFrame({
             'type': ['analysis'],
             'split': [None],
             'lvl': [None],
             'path': [list(path)],
+            'path_pivot': [list(path_pivot)],
+            'pivot_split': [list(pivot_split)],
+            'pivot_lvl': [list(pivot_lvl)],
             'depth': depth,
             'label': self.label,
             'summary': [self.summary]
@@ -84,21 +88,33 @@ class SplitDataNode(dict):
         recusive_str = "".join(res)
         return f"{' ' * (ind * 2)}Split node on {self.split_var}\n" + recusive_str
     
-    def __flatten__(self, path = (), depth: int = 0) -> pd.DataFrame:
+    def __flatten__(self, path = (), depth: int = 0, pivot_var = (), path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
 
         path = path + (self.split_var,)
+
+        if self.split_var in pivot_var:
+            path_pivot = path_pivot
+            pivot_split = pivot_split + (self.split_var,)
+            pivot_now = True
+
+        else:
+            path_pivot = path_pivot + (self.split_var,)
+            pivot_now = False
 
         res_loc = pd.DataFrame({
             'type': ['split'],
             'split': [self.split_var],
             'lvl': [None],
             'path': [list(path)],
+            'path_pivot': [list(path_pivot)],
+            'pivot_split': [list(pivot_split)],
+            'pivot_lvl': [list(pivot_lvl)],
             'depth': depth,
             'label': None,
             'summary': [None]
         })
 
-        res = [x.__flatten__(path = path, depth = depth + 1) for x in self.values()]
+        res = [x.__flatten__(path = path, depth = depth + 1, pivot_var = pivot_var, pivot_now = pivot_now, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl) for x in self.values()]
 
         res = [res_loc] + res
         return pd.concat(res, ignore_index = True)
@@ -141,20 +157,42 @@ class LvlDataNode(dict):
         
         return f"{' ' * (ind * 2)}-- {self.split_lvl}\n" + recusive_str
     
-    def __flatten__(self, path = (), depth:int = 0) -> pd.DataFrame:
+    def __flatten__(self, path = (), depth:int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
+        """Flatten a LvlDataNode
+        Args:
+            path (str): The current path at which the `LvlDataNode` sits. 
+            depth (int): The depth at which the the `LvlDataNode` sits. Corresponds in general to the lenght of the `path`.
+            pivot_var (str): The name of the split to pivot by. ===> just transmitted further below. 
+            pivot_now (bool): whether the `LvlDataNode` sits just after a `SplitDataNode` corresponding to a `pivot_var` and should be pivoted.
+            path_pivot (str): The current path without the nodes that have been pivoted. 
+            pivot_split (list(str)): The list of the `SplitDataNode` to pivot by that already have been traversed. ===> just transmitted further below.
+            pivot_lvl: (list(str)): The list of the `LvlDataNode` to pivot by that already have been traversed.
+        """
+
         path = path + (self.split_lvl,)
+
+        if pivot_now:
+            path_pivot = path_pivot # Do not add anything if pivoted.
+            pivot_lvl = pivot_lvl + (self.split_lvl,)
+
+        else:
+            path_pivot = path_pivot + (self.split_lvl,)
+
 
         res_loc = pd.DataFrame({
             'type': ['level'],
             'split': [None],
             'lvl': [self.split_lvl],
             'path': [list(path)],
+            'path_pivot': [list(path_pivot)],
+            'pivot_split': [list(pivot_split)],
+            'pivot_lvl': [list(pivot_lvl)],
             'depth': depth,
             'label': None,
             'summary': [None]
         })
 
-        res = [x.__flatten__(path = path , depth = depth + 1) for x in self.values()]
+        res = [x.__flatten__(path = path , depth = depth + 1, pivot_var = pivot_var, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl) for x in self.values()]
         res = [res_loc] + res
         return pd.concat(res, ignore_index = True)
 
@@ -183,20 +221,34 @@ class DataTree(dict):
         recusive_str = "".join(res)
         return "Data Tree\n" + recusive_str
     
-    def __flatten__(self) -> pd.DataFrame:
+    def __flatten__(self, pivot:str = ()) -> pd.DataFrame:
+        """Flatten a DataTree into a DataFrame.
+        This method flattens the hierarchical structure of the DataTree into a pandas DataFrame.
+        Args:
+            pivot (str, optional): The name of a split to pivot by. Defaults to an empty tuple.
+        Returns:
+            pd.DataFrame: A flattened representation of the DataTree.
+        """
+
         depth = 0
         path = ("root",)
+        pivot_split = ()
+        pivot_lvl = ()
+        path_pivot = ("root",)
 
         res_loc = pd.DataFrame({
             'type': ['root'],
             'split': [None],
             'lvl': [None],
             'path': [list(path)],
+            'path_pivot': [list(path)],
+            'pivot_split': [list(())],
+            'pivot_lvl': [list(())],
             'depth': depth,
             'label': None,
             'summary': [None]
         })
 
-        res = [x.__flatten__(path = path, depth = depth + 1) for x in self.values()]
+        res = [x.__flatten__(path = path, depth = depth + 1, pivot_var = pivot, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl) for x in self.values()]
         res = [res_loc] + res
         return pd.concat(res, ignore_index = True)

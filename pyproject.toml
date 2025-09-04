@@ -8,6 +8,7 @@ dependencies = [
     "click>=8.2.1",
     "numpy>=1.22.0",
     "pandas>=2.0.0",
+    "plotly>=6.3.0",
 ]
 
 [dependency-groups]
