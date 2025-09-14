@@ -1,40 +1,17 @@
-
-from pyMyriade import *
-from pyMyriade.tabular import flatten
-
-dtree = DataTree(
-    s = SplitDataNode(
-        split_var="VAR",
-        node=LvlDataNode(
-            split_lvl="lvl1",
-            group1=DataNode(
-                label="Group 1",
-                summary={"x": 10, "err": 5}
-            ),
-            group2=DataNode(
-                label="Group 2",
-                summary={"x": 100, "err": 50}
-            )
-        ),
-        node2=LvlDataNode(
-            split_lvl="lvl2",
-            group1=DataNode(
-                label="Group 1",
-                summary={"x": 8, "err": 9}
-            ),
-            group2=DataNode(
-                label="Group 2",
-                summary={"x": 88, "err": 99}
-            )
-        )
-    ),
-    a = DataNode(
-        label=None,
-        summary={"x": 15, "err": 8}
-    )
-)
-
+import pandas as pd
+import numpy as np
+from pyMyriade.analysis_tree import AnalysisTree, SplitNode, AnalysisNode
 from pyMyriade.plots import forest_plot
 
-forest_plot(dtree)
+atree = AnalysisTree().split_by("df.VAR1").split_by("df.VAR2 > 50").analyze_by(m = "np.mean(df.val)", std = "np.std(df.val)")
+df = pd.DataFrame({
+    "VAR1": ["A", "A", "A", "B", "B", "B"],
+    "VAR2": [10, 60, 70, 20, 80, 90],
+    "val": [1, 2, 3, 4, 5, 6]
+})
+dtree = atree.run(df, environ = None)
+fig = forest_plot(dtree, x = "m", x_err  = "std", show = False)
+fig.show()
 
+fig2 = forest_plot(dtree, col = "df.VAR1", x = "m", x_err  = "std", show = False)
+fig2.show()

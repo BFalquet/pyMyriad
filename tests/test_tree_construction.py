@@ -37,3 +37,55 @@ def test_tree_construction_analysis_tree_mulibranch():
 
     assert isinstance(a_tree[0], SplitNode)
     assert isinstance(a_tree[1], SplitNode)
+
+# ----
+
+def test_split_by():
+    res = AnalysisTree().split_by(m = "A > 50")
+    assert isinstance(res, AnalysisTree)
+    assert len(res) == 1
+    assert isinstance(res[0], SplitNode)
+    assert res[0].kwexpr == {"m": "A > 50"}
+
+    res = AnalysisTree().split_by("A > 50")
+    assert isinstance(res, AnalysisTree)
+    assert len(res) == 1
+    assert isinstance(res[0], SplitNode)
+    assert res[0].expr == "A > 50"
+
+    # Chaining works as expected
+    res = res.split_by(x = "B == 40")
+    assert isinstance(res[0], SplitNode)
+    assert len(res[0]) == 1
+    assert isinstance(res[0][0], SplitNode)
+    assert len(res[0][0]) == 0
+    assert res[0][0].kwexpr == {"x": "B == 40"}
+    
+    # Termination prevents addition
+    atree = AnalysisTree(AnalysisNode(m = "np.mean(df.B)"))
+    atree2 = atree.split_by("X > 10")
+    assert atree == atree2
+
+def test_analyze_by():
+    res = AnalysisTree().analyze_by(m = "np.mean(df.B)")
+    assert isinstance(res, AnalysisTree)
+    assert len(res) == 1
+    assert isinstance(res[0], AnalysisNode)
+    assert res[0].analysis == {"m": "np.mean(df.B)"}
+
+    res = AnalysisTree().split_by("A>50").analyze_by(m = "np.mean(df.B)")
+    assert len(res[0]) == 1
+    assert isinstance(res[0], SplitNode)
+    assert isinstance(res[0][0], AnalysisNode)
+    assert res[0][0].analysis == {"m": "np.mean(df.B)"}
+
+    # Termination prevents addition of split node
+    res2 = res.split_by("X > 10")
+    assert res == res2
+
+    # Termination doesn't prevent addition of analysis node
+    res3 = res.analyze_by(s = "np.std(df.B)")
+    assert len(res[0]) == 2
+    assert isinstance(res[0][0], AnalysisNode)
+    assert isinstance(res[0][1], AnalysisNode)
+

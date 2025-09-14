@@ -4,6 +4,8 @@ import pandas as pd
 from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
 from .utils import scope_eval, get_top_globals
 
+#region AnalysisTree
+
 class AnalysisTree(list):
     """A subclass of list that represents an analysis tree with an associated date.
 
@@ -73,21 +75,67 @@ class AnalysisTree(list):
         res = dict(zip(res_names, res_lst))
         return DataTree(**res)
     
-    def split_by(self, expr: str = None, **kwargs):
+    def split_by(self, expr: str = None, label: str = None, **kwargs):
+        """Add a split node at the extremites of the branches.
+
+        Note: 
+            No split node is added where there is already a split node or an analysis node with termination signal.
+        Args:
+            expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
+            **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
+        Returns:
+            AnalysisTree: The modified AnalysisTree with the new split node added.
+        Examples:
+            a_tree = AnalysisTree()
+            a_tree = a_tree.split_by(m = "A > 50")
+            a_tree = a_tree.split_by("B > 50")
+        """
         
         is_split_node = [isinstance(x, SplitNode) for x in self]
         no_termination = not any([x.termination for x in self if isinstance(x, AnalysisNode)])
 
         # length 0 OR (no split node and no termination signal)
         if ((len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination)):
-            self.append(SplitNode(expr = expr, **kwargs))
+            self.append(SplitNode(expr = expr, label = label, **kwargs))
         
         else:
             for i in range(len(self)):
                     if isinstance(self[i], SplitNode):
-                        self[i] = self[i].split_by(expr = expr, **kwargs)
+                        self[i] = self[i].split_by(expr = expr, label = label, **kwargs)
                 
         return self
+    
+    def analyze_by(self, *args, label: str = str(), termination: bool = True, **kwargs):
+        """Add an analyis node at the extremites of the branches.
+        
+        Args:
+            *args: Additional positional arguments representing analysis expressions.
+            label (str, optional): The label for the analysis node. Defaults to an empty string.
+            termination (bool, optional): Indicates if this node is a termination node. Defaults to True.
+            **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
+        Returns:
+            AnalysisTree: The modified AnalysisTree with the new analysis node added.
+        Examples:
+            a_tree = AnalysisTree()
+            a_tree = a_tree.analyze_by(m = "np.mean(A)", s = "np.std(B)")
+            a_tree = a_tree.analyze_by("np.mean(A)", "np.std(B)", label = "Summary Stats")
+        """
+        is_split_node = [isinstance(x, SplitNode) for x in self]
+
+        # length 0 OR (no split node and no termination signal)
+        if ((len(is_split_node) == 0) or (not any(is_split_node))):
+            self.append(AnalysisNode(*args, label = label, termination = termination, **kwargs))
+        
+        else:
+            for i in range(len(self)):
+                    if isinstance(self[i], SplitNode):
+                        self[i] = self[i].analyze_by(*args, label = label, termination = termination, **kwargs)
+
+        return self
+
+#endregion
+
+#region SplitNode
 
 class SplitNode(list):
     """A subclass of list representing a splitting node.
@@ -186,21 +234,68 @@ class SplitNode(list):
 
         return SplitDataNode(split_var = split_var, **res_dic)
     
-    def split_by(self, expr: str = None, **kwargs):
+    def split_by(self, expr: str = None, label:str = None, **kwargs):
+        """Add a split node at the extremites of the branches.
+
+        Note: 
+            No split node is added where there is already a split node or an analysis node with termination signal.
+        Args:
+            expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
+            label (str, optional): The label of the node.
+            **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
+        Returns:
+            AnalysisTree: The modified AnalysisTree with the new split node added.
+        Examples:
+            a_tree = AnalysisTree()
+            a_tree = a_tree.split_by(m = "A > 50")
+            a_tree = a_tree.split_by("B > 50")
+        """
+            
         is_split_node = [isinstance(x, SplitNode) for x in self]
         no_termination = not any([x.termination for x in self if isinstance(x, AnalysisNode)])
         
         # length 0 OR (no split node and no termination signal)
         if ((len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination)):
-            self.append(SplitNode(expr = expr, **kwargs))
+            self.append(SplitNode(expr = expr, label = label, **kwargs))
         
         else:
             for i in range(len(self)):
                     if isinstance(self[i], SplitNode):
-                        self[i] = self[i].split_by(expr = expr, **kwargs)
+                        self[i] = self[i].split_by(expr = expr, label = label, **kwargs)
                 
         return self
+    
+    def analyze_by(self, *args, label: str = str(), termination: bool = True, **kwargs):
+        """Add an analyis node at the extremites of the branches.
+        
+        Args:
+            *args: Additional positional arguments representing analysis expressions.
+            label (str, optional): The label for the analysis node. Defaults to an empty string.
+            termination (bool, optional): Indicates if this node is a termination node. Defaults to True.
+            **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
+        Returns:
+            AnalysisTree: The modified AnalysisTree with the new analysis node added.
+        Examples:
+            a_tree = AnalysisTree()
+            a_tree = a_tree.analyze_by(m = "np.mean(A)", s = "np.std(B)")
+            a_tree = a_tree.analyze_by("np.mean(A)", "np.std(B)", label = "Summary Stats")
+        """
+        is_split_node = [isinstance(x, SplitNode) for x in self]
 
+        # length 0 OR (no split node and no termination signal)
+        if ((len(is_split_node) == 0) or (not any(is_split_node))):
+            self.append(AnalysisNode(*args, label = label, termination = termination, **kwargs))
+        
+        else:
+            for i in range(len(self)):
+                    if isinstance(self[i], SplitNode):
+                        self[i] = self[i].analyze_by(*args, label = label, termination = termination, **kwargs)
+
+        return self
+
+#endregion
+
+#region AnalysisNode
 
 class AnalysisNode():
     """A class representing how data should be analyzed.
@@ -261,3 +356,5 @@ class AnalysisNode():
 
         res = scope_eval(df = data, extra_context = environ, **self.analysis)
         return DataNode(data = data, summary = res, label = self.label, depth = 0)
+
+#endregion
