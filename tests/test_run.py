@@ -1,5 +1,5 @@
-from pyMyriade import *
-from pyMyriade.utils import get_top_globals
+from pyMyriad import *
+from pyMyriad.utils import get_top_globals
 import pandas as pd
 import numpy as np
 from importlib import import_module

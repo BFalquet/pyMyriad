@@ -1,5 +1,5 @@
 [project]
-name = "pymyriade"
+name = "pymyriad"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -19,4 +19,4 @@ dev = [
 ]
 
 [project.scripts]
-foocli = "pyMyriade.cli:main"
+foocli = "pyMyriad.cli:main"

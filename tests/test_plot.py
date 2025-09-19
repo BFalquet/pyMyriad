@@ -1,6 +1,6 @@
 import pytest
-from pyMyriade.analysis_tree import AnalysisTree, SplitNode, AnalysisNode
-from pyMyriade.plots import forest_plot
+from pyMyriad.analysis_tree import AnalysisTree, SplitNode, AnalysisNode
+from pyMyriad.plots import forest_plot
 
 import pandas as pd
 import numpy as np
@@ -32,15 +32,12 @@ def test_forest_plot():
     assert fig is not None
     assert len(fig.data) > 0
 
-def test_forest_plot():
-    atree = AnalysisTree().split_by("df.VAR1").split_by("df.VAR2 > 50").analyze_by(m = "np.mean(df.val)", std = "np.std(df.val)")
-    df = pd.DataFrame({
-        "VAR1": ["A", "A", "A", "B", "B", "B"],
-        "VAR2": [10, 60, 70, 20, 80, 90],
-        "val": [1, 2, 3, 4, 5, 6]
-    })
-    with with_module('numpy', 'np') as environ:
-        dtree = atree.run(df, environ = environ)
     fig = forest_plot(dtree, col = "df.VAR1", x = "m", x_err  = "std", show = False)
     assert fig is not None
     assert len(fig.data) > 0
+
+
+import pandas as pd
+import numpy as np
+from pyMyriad.analysis_tree import AnalysisTree, SplitNode, AnalysisNode
+from pyMyriad.plots import forest_plot

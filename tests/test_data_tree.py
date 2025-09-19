@@ -1,4 +1,4 @@
-from pyMyriade import *
+from pyMyriad import *
 
 def test_data_tree_empty():
     dt = DataTree()

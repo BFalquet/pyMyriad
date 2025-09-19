@@ -1,5 +1,5 @@
 import pytest
-from pyMyriade import AnalysisTree, AnalysisNode, SplitNode
+from pyMyriad import AnalysisTree, AnalysisNode, SplitNode
 
 def test_tree_construction_split_node():
 
