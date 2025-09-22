@@ -24,23 +24,10 @@ df = pd.DataFrame({
   "B": np.random.normal(0, 1, 1000)
 })
 
-fig = px.scatter(
-    data_frame = df,
-    x = "A",
-    y = "B"
-)
+df.A > 0 | df.B > 0
 
-fig.show()
+atree = AnalysisTree().split_by("(df.A + df.B) > 1").analyze_by(m = "np.mean(df.B)")
+print(atree)
+dtree = atree.run(df)
+print(dtree)
 
-df2 = df.loc[(df.A > 0) & (df.B > 0)]
-
-fig = px.scatter(
-    data_frame = df2,
-    x = "A",
-    y = "B"
-)
-
-fig.show()
-
-np.corrcoef(np.transpose(df2))
-help(np.corrcoef)

@@ -5,18 +5,25 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), show = True):
+    """Create a forest plot from a DataTree object.
+
+    Args:
+        dtree (DataTree): The DataTree object containing the analysis results.
+        x (str, optional): The column name for the x-axis values. Defaults to "x".
+        x_err (str, optional): The column name for the x-axis error values. Defaults to "err".
+        col (str or list of str, optional): Column(s) to facet the plot by. Defaults to ().
+        show (bool, optional): Whether to display the plot immediately. If False, returns the figure object. Defaults to True.
+
+    Examples:
+
+    """
 
     res = flatten(dtree, unnest=True, by = col)
 
-    res['path_pivot'] = res['path_pivot'].apply(lambda x: "".join(x))
-    res['pivot_lvl'] = res['pivot_lvl'].apply(lambda x: ".none" if x is None else "".join(x))
-    res['pivot_split'] = res['pivot_split'].apply(lambda x: ".none" if x is None else "".join(x))
+    res['path_pivot'] = res['path_pivot'].apply(lambda x: " >> ".join(x))
+    res['pivot_lvl'] = res['pivot_lvl'].apply(lambda x: ".none" if x is None else " >> ".join(x))
+    res['pivot_split'] = res['pivot_split'].apply(lambda x: ".none" if x is None else " >> ".join(x))
     # res['label'] = res['label'].apply(lambda x: None if x is None else "".join(x))
-
-    # print(
-    #    res.loc[res[['type' 'path_pivot', 'pivot_lvl', 'label']].duplicated()]
-    # )
-
 
     res = res.pivot(
        index = ["split", "type", "path_pivot", "pivot_lvl", "pivot_split", "label"],
@@ -25,13 +32,7 @@ def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), show = True
     ).reset_index()
 
     res = res.loc[(res["split"] != res["pivot_split"]) & (res['type'] != "split")]
-
-    # res['y'] = pd.factorize(res['path_pivot'])[0] + (pd.factorize(res['pivot_lvl'])[0] + 1 / max(pd.factorize(res['pivot_lvl'])[0] + 1)) - np.median(pd.factorize(res['pivot_lvl'])[0] + 1)
-
-
     res['y'] = pd.factorize(res['path_pivot'])[0]
-    print(res)
-
 
     fig = px.scatter(
         res,
