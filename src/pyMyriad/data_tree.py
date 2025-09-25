@@ -9,9 +9,10 @@ class DataNode():
         summary (dict): A dictionary containing summary information about the node.
         label (str): A string label identifying the node.
         depth (int): The depth of the node in the tree structure.
+        _N (int): The number of unique identifiers in the data, if applicable.
     """
 
-    def __init__(self, data = None, summary: dict = None, label: str = str(), depth: int = 0):
+    def __init__(self, data = None, summary: dict = None, label: str = str(), depth: int = 0, _N: int = None):
         """Initializes the DataNode object.
         Args:
             data: The data associated with this node. Can be any type. Defaults to None.
@@ -26,10 +27,11 @@ class DataNode():
         self.summary = summary
         self.label = label
         self.depth = depth
+        self._N = _N
 
     def __str__(self, ind: int = 0):
 
-        res = [f"{' ' * (ind * 2)}  {k}: {str(v)}\n" for k,v in (self.summary or {}).items()]
+        res = [f"{' ' * (ind * 2)}└- {k}: {str(v)}\n" for k,v in (self.summary or {}).items()]
         return f"{' ' * (ind * 2)}analysis {self.label}:\n" + "".join(res)
     
     def __flatten__(self, path = (), depth: int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
@@ -61,11 +63,12 @@ class SplitDataNode(dict):
         split_var (str): The variable name used for splitting.
     """
 
-    def __init__(self, split_var: str, **kwargs):
+    def __init__(self, split_var: str, label: str = None, **kwargs):
         """Initializes the SplitDataNode object.
         
         Args:
             split_var (str): The variable name used for splitting.
+            label (str, optional): The label for the split node. Defaults to None.
             **kwargs: Keyword arguments where each value must be an instance of LvlDataNode.
         Attributes:
             split_var (str): The variable name used for splitting.
@@ -81,12 +84,13 @@ class SplitDataNode(dict):
         assert all(acceptable_lst), "All elements must be instances of LvlDataNode"
         super().__init__(**kwargs)
         self.split_var = split_var
+        self.label = label or split_var
 
     def __str__(self, ind: int = 0):
         
         res = [x.__str__(ind = ind + 1) for x in self.values()]
         recusive_str = "".join(res)
-        return f"{' ' * (ind * 2)}Split node on {self.split_var}\n" + recusive_str
+        return f"{' ' * (ind * 2)}Split {self.label}\n" + recusive_str
     
     def __flatten__(self, path = (), depth: int = 0, pivot_var = (), path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
 
@@ -126,13 +130,15 @@ class LvlDataNode(dict):
     Attributes:
         split_lvl (str): The identifier for the split level of this node.
         meta (any): Metadata associated with this node.
+        _N (int): The number of unique identifiers in the data, if applicable.
     """
 
-    def __init__(self, split_lvl: str, meta: any = (), **kwargs):
+    def __init__(self, split_lvl: str, meta: any = (), _N: int = None, **kwargs):
         """Initializes the LvlDataNode object.
         Args:
             split_lvl (str): The identifier for the split level of this node.
             meta (any, optional): Metadata associated with this node. Defaults to an empty tuple.
+            _N (int, optional): The number of unique identifiers in the data, if applicable. Defaults to None.
             **kwargs: Keyword arguments where each value must be an instance of SplitDataNode or DataNode.
         Raises:
             AssertionError: If any value in kwargs is not an instance of SplitDataNode or DataNode.
@@ -149,13 +155,14 @@ class LvlDataNode(dict):
         super().__init__(**kwargs)
         self.split_lvl = split_lvl
         self.meta = meta
+        self._N = _N
 
     def __str__(self, ind: int = 0):
         
         res = [x.__str__(ind = ind + 1) for x in self.values()]
         recusive_str = "".join(res)
         
-        return f"{' ' * (ind * 2)}-- {self.split_lvl}\n" + recusive_str
+        return f"{' ' * (ind * 2)}└- {self.split_lvl}\n" + recusive_str
     
     def __flatten__(self, path = (), depth:int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
         """Flatten a LvlDataNode
@@ -200,11 +207,12 @@ class DataTree(dict):
     """A subclass of dictionnary that represents a data tree.
     
     Attributes:
-        None
+        _N (int): The number of unique identifiers in the data, if applicable.
     """
-    def __init__(self, **kwargs):
+    def __init__(self, _N: int = None, **kwargs):
         """Initializes the DataTree object.
         Args:
+            _N (int, optional): The number of unique identifiers in the data, if applicable. Defaults to None.
             **kwargs: Keyword arguments where each value must be an instance of SplitDataNode or DataNode.
         Raises:
             AssertionError: If any value in kwargs is not an instance of SplitDataNode or Data
@@ -214,6 +222,7 @@ class DataTree(dict):
         acceptable_lst = [isinstance(x, (SplitDataNode, DataNode)) for x in kwargs.values()] 
         assert all(acceptable_lst)
         super().__init__(**kwargs)
+        self._N = _N
 
     def __str__(self):
         ind = 0

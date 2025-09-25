@@ -17,10 +17,12 @@ df = pd.DataFrame({
 mfun = lambda df: np.mean(df.Income)
 nfun = lambda df: np.std(df.Income)
 benin_fun =  lambda df: df.Country == 'Benin'
+age_cut = lambda df: df.Age > 40
 
 atree = AnalysisTree()\
   .split_by("df.Gender")\
-  .split_by(label = "Benin", b = "df.Country == 'Benin'")\
+  .split_by(label = "Benin", b = benin_fun)\
+  .split_by(label = "Age > 40", expr = age_cut)\
   .analyze_by(m = mfun, n = nfun)
 
 print(atree)

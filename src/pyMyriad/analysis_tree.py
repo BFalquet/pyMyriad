@@ -18,10 +18,11 @@ class AnalysisTree(list):
         tree = AnalysisTree()
         print(tree)
     """
-    def __init__(self, *args):
+    def __init__(self, *args, id:str = None):
         """ Initializes the AnalysisTree object.
         Args:
             *args: Variable length argument list containing SplitNode or AnalysisNode instances.
+            id (str, optional): The name of the column whose unique counts identifies the number of entities. Defaults to None.
         Raises:
             AssertionError: If any element in args is not an instance of SplitNode or AnalysisNode.
         """
@@ -31,13 +32,14 @@ class AnalysisTree(list):
 
         super().__init__(args)
         self.att = ()
+        self.id = id
 
     def __str__(self):
         ind = 0
         res = [x.__str__(ind = ind + 2) for x in self]
         recusive_str = "".join(res)
         return "Analysis Tree\n" + recusive_str
-    
+
     def run(self, data: pd.DataFrame, environ: dict = None) -> DataTree:
         """Run the analysis tree on the provided DataFrame.
         Args:
@@ -59,8 +61,10 @@ class AnalysisTree(list):
         if environ is None:
             environ = get_top_globals()
 
+        _N = count_or_length(data, self.id)
+
         # Recursively apply run.
-        res_lst = [elements.run(data, environ = environ) for elements in self]
+        res_lst = [elements.run(data, environ = environ, id = self.id) for elements in self]
         
         res_names = []
         for x in res_lst:
@@ -70,7 +74,7 @@ class AnalysisTree(list):
                 res_names.append(x.label or "Custom")
         
         res = dict(zip(res_names, res_lst))
-        return DataTree(**res)
+        return DataTree(_N = _N, **res)
     
     def split_by(self, expr: str = None, label: str = None, **kwargs):
         """Add a split node at the extremites of the branches.
@@ -238,12 +242,13 @@ class SplitNode(list):
         recusive_str = "".join(recusive_lst)
 
         return split_str + recusive_str
-    
-    def run(self, data: pd.DataFrame, environ: dict = None) -> SplitDataNode:
+
+    def run(self, data: pd.DataFrame, environ: dict = None, id: str = None, _N: int = None) -> SplitDataNode:
         """Run the split node on the provided DataFrame.
         Args:
             data (pd.DataFrame): The DataFrame to split.
             environ (dict, optional): A dictionary representing the environment in which to evaluate expressions. Defaults to None.
+            id (str, optional): The name of the column whose unique counts identifies the number of entities. Defaults to None.
         Returns:
             SplitDataNode: The resulting SplitDataNode after running the split node.
         Examples:
@@ -263,14 +268,13 @@ class SplitNode(list):
             gp_bool = gp_eval_dict["gp"]
 
             groups = data.groupby(gp_bool)
-                # data.eval(self.expr, **(environ or {}))
                 
             # Convert to dictionary of DataFrames
             split_dfs = {str(name): group for name, group in groups}
 
         else:
             # Split using multiple expressions.
-            # Note: Group might not cover all rows or overlap.
+            # Note: Group might overlap or not cover all rows.
             split_dfs = {}
             gp_eval_dict = scope_eval(df = data, extra_context = environ, **self.kwexpr)
             for n, gp in gp_eval_dict.items():
@@ -279,11 +283,13 @@ class SplitNode(list):
         # Recursively apply run for each data frame (that now contain the name of the groups), 
         # create a lvlnode which contains the rest of the tree
         # the self of the lvl node is the rest of the tree on which run has been applied
-        res_dic = {n: LvlDataNode(split_lvl = str(n), **{str(nn): element.run(data, environ = environ) for nn, element in enumerate(self)}) for n, data in split_dfs.items()}
+        res_dic = {str(n): LvlDataNode(split_lvl = str(n), _N = count_or_length(data, id), **{str(nn): element.run(data, environ = environ, id = id, _N = None) for nn, element in enumerate(self)}) for n, data in split_dfs.items()}
         
+        print(res_dic.keys())
+
         split_var = self.expr or "::".join(self.kwexpr.keys())
 
-        return SplitDataNode(split_var = split_var, **res_dic)
+        return SplitDataNode(split_var = split_var, label = self.label, **res_dic)
     
     def split_by(self, expr: str = None, label:str = None, **kwargs):
         """Add a split node at the extremites of the branches.
@@ -439,7 +445,7 @@ class AnalysisNode():
         analysis_str = (" " * (ind + 2)) + f"└- Analysis Node: {self.label}\n" + "". join(analysis_lst)
         return analysis_str
     
-    def run(self, data, environ = None) -> DataNode:
+    def run(self, data, environ = None, id: str = None, _N:int = None) -> DataNode:
         """Run the analysis node on the provided DataFrame.
         Args:
             data (pd.DataFrame): The DataFrame to analyze.
@@ -459,7 +465,7 @@ class AnalysisNode():
         """
 
         res = scope_eval(df = data, extra_context = environ, **self.analysis)
-        return DataNode(data = data, summary = res, label = self.label, depth = 0)
+        return DataNode(data = data, summary = res, label = self.label, depth = 0, _N = _N)
 
 #endregion
 
@@ -483,3 +489,23 @@ def analysis_to_string(analysis):
         except Exception as e:
             print(f"function {analysis.__name__}")
     return str(analysis)
+
+def count_or_length(data: pd.DataFrame, id: str) -> int:
+    """Count the number of unique entities in the DataFrame based on the specified id column.
+    
+    Args:
+        data (pd.DataFrame): The DataFrame to analyze.
+        id (str): The name of the column whose unique counts identifies the number of entities.
+    Returns:
+        int: The number of unique entities in the DataFrame.
+    Examples:
+        df = pd.DataFrame({
+            "id": [1, 2, 1, 3],
+            "value": [10, 20, 10, 30]
+        })
+        count_or_length(df, "id")  # Returns: 3
+    """
+    if id is None:
+        return len(data)
+    else:
+        return data[id].nunique()
