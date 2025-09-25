@@ -3,6 +3,7 @@ __version__ = "0.1.0"
 
 from .analysis_tree import *
 from .data_tree import *
+from .plots import forest_plot
 
 __all__ = [
     "AnalysisTree", 
@@ -11,5 +12,6 @@ __all__ = [
     "DataTree",
     "SplitDataNode",
     "LvlDataNode",
-    "DataNode"
+    "DataNode",
+    "forest_plot"
 ]
