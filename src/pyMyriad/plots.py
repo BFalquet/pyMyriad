@@ -39,20 +39,25 @@ def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), show = True
 
     res['path_pivot'] = res['path_pivot'].apply(lambda x: " >> ".join(x))
     res = res.loc[~(res['path_pivot'].isin(available_analysis) & (res['type'] != "analysis"))]
-    res['y'] = pd.Categorical(res['path_pivot'], ordered = True).codes
+    # res['y'] = pd.Categorical(res['path_pivot'], ordered = True).codes
+
+    res = res.reset_index().rename(columns={'index': '_id'})
 
     res = res.pivot(
-       index = ["y", "split", "type", "path_pivot", "pivot_lvl", "pivot_split", "label", "y_label"],
+       index = ["_id", "split", "type", "path_pivot", "pivot_lvl", "pivot_split", "label", "y_label"], # y
        columns = "statistics",
        values = "values"
-    ).reset_index()
+    )
 
-    # res = res.loc[(res["split"] != res["pivot_split"]) & (res['type'] != "split")]
-    res = res.loc[(res["split"] != res["pivot_split"])]
-    
+    # res = res.loc[(res["split"] != res["pivot_split"])]
+
+    # Reset index so 'index' becomes a column again
+    res = res.reset_index()
+
     # find the rank if the values in the y columns
-    res['y'] = res['y'].rank(method = 'dense')
 
+    res['y'] = res['_id'].rank(method = 'dense')
+    
     fig = px.scatter(
         res,
         x = x,

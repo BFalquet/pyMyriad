@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from .utils import scope_eval, get_top_globals, analysis_to_string, count_or_length
 
 class DataNode():
     """Represents a node in a data tree structure, holding data and metadata.
@@ -31,8 +32,8 @@ class DataNode():
 
     def __str__(self, ind: int = 0):
 
-        res = [f"{' ' * (ind * 2)}└- {k}: {str(v)}\n" for k,v in (self.summary or {}).items()]
-        return f"{' ' * (ind * 2)}analysis {self.label}:\n" + "".join(res)
+        res = [f"{' ' * (ind * 2)}  └- {k}: {str(v)}\n" for k,v in (self.summary or {}).items()]
+        return f"{' ' * (ind * 2)}  analysis: {self.label}\n" + "".join(res)
     
     def __flatten__(self, path = (), depth: int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
 
@@ -84,38 +85,38 @@ class SplitDataNode(dict):
         assert all(acceptable_lst), "All elements must be instances of LvlDataNode"
         super().__init__(**kwargs)
         self.split_var = split_var
-        self.label = label or split_var
+        self.label = label or analysis_to_string(split_var)
 
     def __str__(self, ind: int = 0):
         
         res = [x.__str__(ind = ind + 1) for x in self.values()]
         recusive_str = "".join(res)
-        return f"{' ' * (ind * 2)}Split {self.label}\n" + recusive_str
+        return f"{' ' * (ind * 2)}Split: {self.label}\n" + recusive_str
     
     def __flatten__(self, path = (), depth: int = 0, pivot_var = (), path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
 
-        path = path + (self.split_var,)
+        path = path + (self.label,) # split_var
 
-        if self.split_var in pivot_var:
+        if self.label in pivot_var:
             path_pivot = path_pivot
-            pivot_split = pivot_split + (self.split_var,)
+            pivot_split = pivot_split + (self.label,)
             pivot_now = True
 
         else:
-            path_pivot = path_pivot + (self.split_var,)
+            path_pivot = path_pivot + (self.label,)
             pivot_now = False
 
         res_loc = pd.DataFrame({
             'type': ['split'],
-            'split': [self.split_var],
+            'split': [self.label],
             'lvl': [None],
             'path': [list(path)],
             'path_pivot': [list(path_pivot)],
             'pivot_split': [list(pivot_split)],
             'pivot_lvl': [list(pivot_lvl)],
             'depth': depth,
+            'summary': [None],
             'label': None,
-            'summary': [None]
         })
 
         res = [x.__flatten__(path = path, depth = depth + 1, pivot_var = pivot_var, pivot_now = pivot_now, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl) for x in self.values()]

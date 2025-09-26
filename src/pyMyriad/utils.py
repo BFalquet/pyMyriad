@@ -62,3 +62,44 @@ def get_top_globals():
     # Return the globals from the top-level frame
     return frame.f_globals
 
+
+def analysis_to_string(analysis):
+    """Convert an analysis expression to a string representation.
+    
+    Args:
+        analysis (str or function): The analysis expression, either as a string or a function.
+    Returns:
+        str: The string representation of the analysis expression.
+    Examples:
+        mfun = lambda df: np.mean(df.Income)
+        analysis_to_string(mfun)  # Returns: "lambda df: np.mean(df.Income)"
+    """
+    if callable(analysis):
+        try:
+            source = inspect.getsourcelines(analysis)[0][0].strip()
+            # Parse and extract just the lambda expression
+            tree = ast.parse(source)
+            return ast.get_source_segment(source, tree.body[0]).strip()
+        except Exception as e:
+            return(f"<function>")
+    return str(analysis)
+
+def count_or_length(data: pd.DataFrame, id: str) -> int:
+    """Count the number of unique entities in the DataFrame based on the specified id column.
+    
+    Args:
+        data (pd.DataFrame): The DataFrame to analyze.
+        id (str): The name of the column whose unique counts identifies the number of entities.
+    Returns:
+        int: The number of unique entities in the DataFrame.
+    Examples:
+        df = pd.DataFrame({
+            "id": [1, 2, 1, 3],
+            "value": [10, 20, 10, 30]
+        })
+        count_or_length(df, "id")  # Returns: 3
+    """
+    if id is None:
+        return len(data)
+    else:
+        return data[id].nunique()

@@ -22,10 +22,13 @@ age_cut = lambda df: df.Age > 40
 atree = AnalysisTree()\
   .split_by("df.Gender")\
   .split_by(label = "Benin", b = benin_fun)\
-  .split_by(label = "Age > 40", expr = age_cut)\
-  .analyze_by(m = mfun, n = nfun)
+  .split_at_by(path = [], label = "aaaaaaAge > 40", expr = age_cut)\
+  .analyze_by(m = mfun, n = nfun)\
+  .analyze_by_at(path = [], label = "aaaaroot analysis", m = mfun, n = nfun)
 
 print(atree)
 
 res = atree.run(df)
-print(res)
+ff = forest_plot(res, x = "m", x_err = "n")
+
+

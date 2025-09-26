@@ -4,7 +4,7 @@ import inspect
 import ast
 import pandas as pd
 from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
-from .utils import scope_eval, get_top_globals
+from .utils import scope_eval, get_top_globals, analysis_to_string, count_or_length
 
 #region AnalysisTree
 
@@ -69,11 +69,14 @@ class AnalysisTree(list):
         res_names = []
         for x in res_lst:
             if isinstance(x, SplitDataNode):
-                res_names.append(x.split_var or "Custom Split")
+                res_names.append(x.label or "Custom Split")
             else:
                 res_names.append(x.label or "Custom")
         
         res = dict(zip(res_names, res_lst))
+        
+        # TODO: hande case where res_name is not a string.
+
         return DataTree(_N = _N, **res)
     
     def split_by(self, expr: str = None, label: str = None, **kwargs):
@@ -227,7 +230,7 @@ class SplitNode(list):
             self.expr = expr
             assert len(kwargs) == 0, "Either expr or kwargs must be provided. Not both."
             self.kwexpr = None
-            self.label = label or expr
+            self.label = label or analysis_to_string(expr)
             self.str = analysis_to_string(expr)
 
     def __str__(self, ind: int = 0):
@@ -283,9 +286,8 @@ class SplitNode(list):
         # Recursively apply run for each data frame (that now contain the name of the groups), 
         # create a lvlnode which contains the rest of the tree
         # the self of the lvl node is the rest of the tree on which run has been applied
-        res_dic = {str(n): LvlDataNode(split_lvl = str(n), _N = count_or_length(data, id), **{str(nn): element.run(data, environ = environ, id = id, _N = None) for nn, element in enumerate(self)}) for n, data in split_dfs.items()}
-        
-        print(res_dic.keys())
+        # res_dic = {str(n): LvlDataNode(split_lvl = str(n), _N = count_or_length(data, id), **{str(nn): element.run(data, environ = environ, id = id, _N = None) for nn, element in enumerate(self)}) for n, data in split_dfs.items()}
+        res_dic = {str(n): LvlDataNode(split_lvl = str(n), _N = count_or_length(data, id), **{(str(element.label) or str(nn)): element.run(data, environ = environ, id = id, _N = None) for nn, element in enumerate(self)}) for n, data in split_dfs.items()}
 
         split_var = self.expr or "::".join(self.kwexpr.keys())
 
@@ -441,8 +443,8 @@ class AnalysisNode():
         self.termination = termination
 
     def __str__(self, ind: int = 0):
-        analysis_lst = [f"{(ind + 6) * ' '}{i}: {j}\n" for i,j in self.analysis_str.items()]
-        analysis_str = (" " * (ind + 2)) + f"└- Analysis Node: {self.label}\n" + "". join(analysis_lst)
+        analysis_lst = [f"{(ind + 4) * ' '}{i}: {j}\n" for i,j in self.analysis_str.items()]
+        analysis_str = (" " * (ind + 0)) + f"└- Analysis Node: {self.label}\n" + "". join(analysis_lst)
         return analysis_str
     
     def run(self, data, environ = None, id: str = None, _N:int = None) -> DataNode:
@@ -468,44 +470,3 @@ class AnalysisNode():
         return DataNode(data = data, summary = res, label = self.label, depth = 0, _N = _N)
 
 #endregion
-
-def analysis_to_string(analysis):
-    """Convert an analysis expression to a string representation.
-    
-    Args:
-        analysis (str or function): The analysis expression, either as a string or a function.
-    Returns:
-        str: The string representation of the analysis expression.
-    Examples:
-        mfun = lambda df: np.mean(df.Income)
-        analysis_to_string(mfun)  # Returns: "lambda df: np.mean(df.Income)"
-    """
-    if callable(analysis):
-        try:
-            source = inspect.getsourcelines(analysis)[0][0].strip()
-            # Parse and extract just the lambda expression
-            tree = ast.parse(source)
-            return ast.get_source_segment(source, tree.body[0]).strip()
-        except Exception as e:
-            print(f"function {analysis.__name__}")
-    return str(analysis)
-
-def count_or_length(data: pd.DataFrame, id: str) -> int:
-    """Count the number of unique entities in the DataFrame based on the specified id column.
-    
-    Args:
-        data (pd.DataFrame): The DataFrame to analyze.
-        id (str): The name of the column whose unique counts identifies the number of entities.
-    Returns:
-        int: The number of unique entities in the DataFrame.
-    Examples:
-        df = pd.DataFrame({
-            "id": [1, 2, 1, 3],
-            "value": [10, 20, 10, 30]
-        })
-        count_or_length(df, "id")  # Returns: 3
-    """
-    if id is None:
-        return len(data)
-    else:
-        return data[id].nunique()
