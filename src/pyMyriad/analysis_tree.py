@@ -166,7 +166,7 @@ class AnalysisTree(list):
 
         return self
     
-    def analyze_by_at(self, path: list, *args, label: str = str(), termination: bool = True, **kwargs):
+    def analyze_at_by(self, path: list, *args, label: str = str(), termination: bool = True, **kwargs):
         """Add an analysis node at a specific path in the tree."""
         if (len(path) == 0):
             self.append(AnalysisNode(*args, label = label, termination = termination, **kwargs))
@@ -174,7 +174,7 @@ class AnalysisTree(list):
             for i in range(len(self)):
                 if isinstance(self[i], SplitNode):
                     if (self[i].label == path[0]) or (path[0] == "*"):
-                        self[i] = self[i].analyze_by_at(path = path[1:], *args, label = label, termination = termination, **kwargs)
+                        self[i] = self[i].analyze_at_by(path = path[1:], *args, label = label, termination = termination, **kwargs)
 
         return self
 
@@ -183,9 +183,9 @@ class AnalysisTree(list):
         self.analyze_by(*args, label = label, termination = termination, **kwargs)
         return self
     
-    def summarize_by_at(self, path: list, *args, label: str = str(), termination: bool = False, **kwargs):
+    def summarize_at_by(self, path: list, *args, label: str = str(), termination: bool = False, **kwargs):
         """Add an analysis node without a termination signal at a specific path in the tree."""
-        self.analyze_by_at(path = path, *args, label = label, termination = termination, **kwargs)
+        self.analyze_at_by(path = path, *args, label = label, termination = termination, **kwargs)
         return self
 
 
@@ -378,7 +378,7 @@ class SplitNode(list):
 
         return self
     
-    def analyze_by_at(self, path: list, *args, label: str = str(), termination: bool = True, **kwargs):
+    def analyze_at_by(self, path: list, *args, label: str = str(), termination: bool = True, **kwargs):
         """Add an analysis node at a specific path in the tree."""
         if (len(path) == 0):
             self.append(AnalysisNode(*args, label = label, termination = termination, **kwargs))
@@ -386,7 +386,7 @@ class SplitNode(list):
             for i in range(len(self)):
                 if isinstance(self[i], SplitNode):
                     if (self[i].label == path[0]) or (path[0] == "*"):
-                        self[i] = self[i].analyze_by_at(path = path[1:], *args, label = label, termination = termination, **kwargs)
+                        self[i] = self[i].analyze_at_by(path = path[1:], *args, label = label, termination = termination, **kwargs)
 
         return self
     
@@ -396,9 +396,9 @@ class SplitNode(list):
         self.analyze_by(*args, label = label, termination = termination, **kwargs)
         return self
 
-    def summarize_by_at(self, path: list, *args, label: str = str(), termination: bool = False, **kwargs):
+    def summarize_at_by(self, path: list, *args, label: str = str(), termination: bool = False, **kwargs):
         """Add an analysis node without a termination signal at a specific path in the tree."""
-        self.analyze_by_at(path = path, *args, label = label, termination = termination, **kwargs)
+        self.analyze_at_by(path = path, *args, label = label, termination = termination, **kwargs)
         return self
 
 #endregion
