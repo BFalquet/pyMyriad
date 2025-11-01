@@ -137,6 +137,8 @@ class AnalysisTree(list):
     def split_at_root_by(self, expr: str = None, label:str = None, **kwargs):
         """Add a split node at the root of the tree."""
         self.append(SplitNode(expr = expr, label = label, **kwargs))
+
+        return self
     
     def analyze_by(self, *args, label: str = str(), termination: bool = True, **kwargs):
         """Add an analyis node at the extremites of the branches.

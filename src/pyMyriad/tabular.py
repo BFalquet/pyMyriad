@@ -134,3 +134,8 @@ def flatten(dtree: DataTree, unnest: bool = False, by: str = ()) -> pd.DataFrame
         flat_df = flat_df.drop(columns = 'summary').join(df_value, how = "left")
 
     return flat_df
+
+def flatten_data(dtree: DataTree, unnest: bool = False, by: str = ()) -> pd.DataFrame:
+    flat_df = dtree.__flatten__(pivot = by, data = True).reset_index(drop = True)
+
+    return flat_df

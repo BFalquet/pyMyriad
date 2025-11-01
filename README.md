@@ -22,14 +22,15 @@
     - transformation to gt
 
 - plots
-  - forest plot (use plotly)
+    - forest plot
     - polish title and legend
     - polish background
     - 
 
 - documentation
   - provide a few example
-  - 
+    -  
+
 
 print method
   - clean up a bit to make the structure more appearant

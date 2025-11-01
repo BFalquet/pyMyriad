@@ -35,7 +35,7 @@ class DataNode():
         res = [f"{' ' * (ind * 2)}  └- {k}: {str(v)}\n" for k,v in (self.summary or {}).items()]
         return f"{' ' * (ind * 2)}  analysis: {self.label}\n" + "".join(res)
     
-    def __flatten__(self, path = (), depth: int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
+    def __flatten__(self, path = (), depth: int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = (), data:bool = False) -> pd.DataFrame:
 
         path = path + ("analysis",)
         path_pivot = path_pivot + ("analysis",)
@@ -50,7 +50,7 @@ class DataNode():
             'pivot_lvl': [list(pivot_lvl)],
             'depth': depth,
             'label': self.label,
-            'summary': [self.summary]
+            'summary': [self.data] if data else [self.summary]
         }, index = [0])
 
 
@@ -93,7 +93,7 @@ class SplitDataNode(dict):
         recusive_str = "".join(res)
         return f"{' ' * (ind * 2)}Split: {self.label}\n" + recusive_str
     
-    def __flatten__(self, path = (), depth: int = 0, pivot_var = (), path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
+    def __flatten__(self, path = (), depth: int = 0, pivot_var = (), path_pivot = (), pivot_split = (), pivot_lvl = (), data:bool = False) -> pd.DataFrame:
 
         path = path + (self.label,) # split_var
 
@@ -119,7 +119,7 @@ class SplitDataNode(dict):
             'label': None,
         })
 
-        res = [x.__flatten__(path = path, depth = depth + 1, pivot_var = pivot_var, pivot_now = pivot_now, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl) for x in self.values()]
+        res = [x.__flatten__(path = path, depth = depth + 1, pivot_var = pivot_var, pivot_now = pivot_now, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl, data = data) for x in self.values()]
 
         res = [res_loc] + res
         return pd.concat(res, ignore_index = True)
@@ -165,7 +165,7 @@ class LvlDataNode(dict):
         
         return f"{' ' * (ind * 2)}└- {self.split_lvl}\n" + recusive_str
     
-    def __flatten__(self, path = (), depth:int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = ()) -> pd.DataFrame:
+    def __flatten__(self, path = (), depth:int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = (), data:bool = False) -> pd.DataFrame:
         """Flatten a LvlDataNode
         Args:
             path (str): The current path at which the `LvlDataNode` sits. 
@@ -200,7 +200,7 @@ class LvlDataNode(dict):
             'summary': [None]
         })
 
-        res = [x.__flatten__(path = path , depth = depth + 1, pivot_var = pivot_var, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl) for x in self.values()]
+        res = [x.__flatten__(path = path , depth = depth + 1, pivot_var = pivot_var, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl, data = data) for x in self.values()]
         res = [res_loc] + res
         return pd.concat(res, ignore_index = True)
 
@@ -231,7 +231,7 @@ class DataTree(dict):
         recusive_str = "".join(res)
         return "Data Tree\n" + recusive_str
     
-    def __flatten__(self, pivot:str = ()) -> pd.DataFrame:
+    def __flatten__(self, pivot:str = (), data:bool = False) -> pd.DataFrame:
         """Flatten a DataTree into a DataFrame.
         This method flattens the hierarchical structure of the DataTree into a pandas DataFrame.
         Args:
@@ -259,6 +259,6 @@ class DataTree(dict):
             'summary': [None]
         })
 
-        res = [x.__flatten__(path = path, depth = depth + 1, pivot_var = pivot, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl) for x in self.values()]
+        res = [x.__flatten__(path = path, depth = depth + 1, pivot_var = pivot, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl, data = data) for x in self.values()]
         res = [res_loc] + res
         return pd.concat(res, ignore_index = True)
