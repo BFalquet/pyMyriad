@@ -1,22 +1,21 @@
 from .tabular import flatten, flatten_data
 import pandas as pd
 import numpy as np
-# import plotly.express as px
-# import plotly.graph_objects as go
-# import plotly.io as pio
+from difflib import get_close_matches
+import warnings
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def forest_plot(dtree, type:str="forest", x:str = "x", x_err:str = "err", col:str = (), jitter:bool = False, show = True):
+def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), type:str="forest", jitter:bool = False, show = True):
     """Create a forest plot from a DataTree object.
 
     Args:
         dtree (DataTree): The DataTree object containing the analysis results.
-        type (str, optional): The type of plot to create. Currently only "forest" is supported. Defaults to "forest".
         x (str, optional): The column name for the x-axis values. Defaults to "x".
         x_err (str, optional): The column name for the x-axis error values. Defaults to "err".
         col (str or list of str, optional): Column(s) to facet the plot by. Defaults to ().
+        type (str, optional): The type of plot to create. Currently only "forest" is supported. Defaults to "forest".
         jitter (bool, optional): Whether to apply jittering to the y-axis positions to avoid overplotting. Defaults to False.
         show (bool, optional): Whether to display the plot immediately. If False, returns the figure object. Defaults to True.
 
@@ -33,7 +32,7 @@ def forest_plot(dtree, type:str="forest", x:str = "x", x_err:str = "err", col:st
     res['label'] = res['label'].apply(lambda x: "Unlabelled" if len(x) == 0 else x) # 0 len label make pivot delete the corresponding lines.
 
     # Remove the last element from path_pivot for y_label
-    res['y_label'] = res.apply(lambda row: str(row['path_pivot'][-2]) if row['type'] == "analysis" else row['lvl'] or row['split'] or "Overall", axis=1)
+    res['y_label'] = res.apply(lambda row: str(row['path_pivot'][-2]) if row['type'] == "analysis" else row['lvl'] or row['split'] or "root", axis=1)
 
     # Remove unnecessary rows
     available_analysis = res.loc[res['type'] == "analysis", 'path_pivot'].apply(lambda x: x[:-1])
@@ -69,7 +68,6 @@ def forest_plot(dtree, type:str="forest", x:str = "x", x_err:str = "err", col:st
 
     # introducing jittering based on colour
     if ((len(res_data['pivot_lvl'].unique()) > 1) & jitter):
-        print("Jittering")
         codes = pd.Categorical(res_data['pivot_lvl']).codes
         # min max normalization to [-0.3, +0.3]
         norm_codes = (codes - np.min(codes)) / (np.max(codes) - np.min(codes)) * 0.4 - 0.2
@@ -153,14 +151,13 @@ def plot_1d(data, type:str = "forest", x:str = "x", x_err:str = "err", **kwargs)
 
 
 
-def distribution_plot(dtree, type:str="forest", x:str = "x", x_err:str = "err", col:str = (), jitter:bool = False, show = True):
+def distribution_plot(dtree, type:str="forest", x:str = None, col:str = (), jitter:bool = False, show = True):
     """Create a forest plot from a DataTree object.
 
     Args:
         dtree (DataTree): The DataTree object containing the analysis results.
-        type (str, optional): The type of plot to create. Currently only "forest" is supported. Defaults to "forest".
-        x (str, optional): The column name for the x-axis values. Defaults to "x".
-        x_err (str, optional): The column name for the x-axis error values. Defaults to "err".
+        type (str, optional): The type of plot to create. Defaults to "scatter".
+        x (str, optional): The column name for the x-axis values.
         col (str or list of str, optional): Column(s) to facet the plot by. Defaults to ().
         jitter (bool, optional): Whether to apply jittering to the y-axis positions to avoid overplotting. Defaults to False.
         show (bool, optional): Whether to display the plot immediately. If False, returns the figure object. Defaults to True.
@@ -178,7 +175,7 @@ def distribution_plot(dtree, type:str="forest", x:str = "x", x_err:str = "err", 
     res['label'] = res['label'].apply(lambda x: "Unlabelled" if len(x) == 0 else x) # 0 len label make pivot delete the corresponding lines.
 
     # Remove the last element from path_pivot for y_label
-    res['y_label'] = res.apply(lambda row: str(row['path_pivot'][-2]) if row['type'] == "analysis" else row['lvl'] or row['split'] or "Overall", axis=1)
+    res['y_label'] = res.apply(lambda row: str(row['path_pivot'][-2]) if row['type'] == "analysis" else row['lvl'] or row['split'] or "root", axis=1)
 
     # Remove unnecessary rows
     available_analysis = res.loc[res['type'] == "analysis", 'path_pivot'].apply(lambda x: x[:-1])
@@ -187,15 +184,6 @@ def distribution_plot(dtree, type:str="forest", x:str = "x", x_err:str = "err", 
     res = res.loc[~(res['path_pivot'].isin(available_analysis) & (res['type'] != "analysis"))]
 
     res = res.reset_index().rename(columns={'index': '_id'})
-
-    # res = res.pivot(
-    #    index = ["_id", "depth", "split", "type", "path_pivot", "pivot_lvl", "pivot_split", "label", "y_label"], # y
-    #    columns = "summary", # keep data in one column
-    #    values = "values"
-    # )
-
-    # Reset index so 'index' becomes a column again.
-    # res = res.reset_index()
 
     # Find the rank if the values in the y columns
     # - "dense" is not working because it is not respecting alphabetic order.
@@ -207,14 +195,12 @@ def distribution_plot(dtree, type:str="forest", x:str = "x", x_err:str = "err", 
 
     # TODO: remove the split to the top left
     # TODO: add color map to the side of the plot if col is not None
-    # TODO: add assertion on the presence of x and x_err
 
     # remove rows that are not analysis from data but keep the data frame for y_label calculation
     res_data = res.loc[res["label"] != '__not__analysis__', :].copy()
 
     # introducing jittering based on colour
     if ((len(res_data['pivot_lvl'].unique()) > 1) & jitter):
-        print("Jittering")
         codes = pd.Categorical(res_data['pivot_lvl']).codes
         # min max normalization to [-0.3, +0.3]
         norm_codes = (codes - np.min(codes)) / (np.max(codes) - np.min(codes)) * 0.4 - 0.2
@@ -242,65 +228,109 @@ def distribution_plot(dtree, type:str="forest", x:str = "x", x_err:str = "err", 
         if i != 0:  # If not the first column
             ax.tick_params(labelleft=False)
             ax.set_ylabel("")
+            # find the name of the current facet
+            facet_name = g.col_names[i % len(g.col_names)]
+
+    # Set the x-axis label for each facet
+    for i, ax in enumerate(g.axes.flat):
+        facet_name = g.col_names[i % len(g.col_names)]
+        if isinstance(x, str):
+            ax.set_xlabel(x)
+        elif isinstance(x, dict):
+            ax.set_xlabel(x[facet_name])
+
+    g.add_legend(title = "".join(res["pivot_split"].unique().tolist()))
+
 
     plt.subplots_adjust(wspace=0.2)
     plt.show()
 
-def plot_distribution(data, type:str = "scatter", x:str = "x", x_err:str = "err", **kwargs):
+def plot_distribution(data, type:str = "scatter", x:str = None, **kwargs):
     """Create a 1D plot.
 
     Args:
         type (str, optional): The type of plot to create. Currently supports "forest", "range", "bar", "point".
-        x (str, optional): The column name for the x-axis values. Defaults to "x".
-        x_err (str, optional): The column name for the x-axis error values. Defaults to "err".
+        x (str, optional): The column name for the x-axis values.
 
     Examples:
 
     """
-    y = "y"
-
+    y = "y_jitter"
     # The data are nested in a data frame in the "summary" column.
     x_series = data["summary"]
-    assert x in x_series.iloc[0].columns, f"{x} not found in the data, available columns: {x_series.iloc[0].columns.tolist()}"
-    x_series = x_series.apply(lambda row: list(row[x])).explode()
 
-    y_series = data[[y]]
+    if isinstance(x, str):
+        assert x in x_series.iloc[0].columns, f"{x} not found in the data, available columns: {x_series.iloc[0].columns.tolist()}"
+        x_series = x_series.apply(lambda row: list(row[x])).explode()
+        x_label = x
+    elif isinstance(x, dict):
+        current_facet = data["label"].unique().tolist()[0]
+        x_series = x_series.apply(lambda row: list(row[x[current_facet]])).explode()
+        x_label = x[current_facet]
+    elif x is None:
+        # for the column with the name most similar to the current facet
+        current_facet = data["label"].unique().tolist()[0]
+        possible_x = x_series.iloc[0].columns.tolist()
+        # find the column with the most similar name to current_facet
+        close_matches = get_close_matches(current_facet, possible_x, n=1, cutoff=0.1)
+        if len(close_matches) == 0:
+            raise ValueError(f"Could not find a column name similar to the facet name: {current_facet}. Please provide an explicit x mapping.")
+        x_col = close_matches[0]
+        x_series = x_series.apply(lambda row: list(row[x_col])).explode()
+        x_label = x_col
+
+        warnings.warn(f"Warning: x parameter is None. Using column '{x_col}' for facet '{current_facet}'.")
+    else:
+        raise ValueError("x must be a string or a dictionary mapping facet labels to column names.")
+    
+    y_series = data[[y, "y_label", "pivot_lvl"]]
     merge_data = pd.merge(y_series, x_series, left_index=True, right_index=True, how='left')
-    merge_data = merge_data.rename(columns={"summary": x})
 
-    # y_lab = data["y_label"].to_list()
+    y_lab = data["y_label"].to_list()
 
-    if type == "forest":
+    if type == "scatter":
         plt.scatter(
-            merge_data[x], 
+            merge_data["summary"], 
             merge_data[y],
-            marker='o',
+            marker='|',
             linestyle=''
         )
+        plt.xlabel(x_label)
 
     elif type == "boxplot":
-            
-        # merge_data_list = merge_data.groupby(y)[x].apply(list)
-        # y_positions = merge_data_list.index.tolist()
-    
-        # box = plt.boxplot(
-        #     x = merge_data_list,
-        #     positions = y_positions,
-        #     orientation='horizontal',
-        #     widths = 0.15
-        # )
-
-        sns.boxplot(
-            x = x,
-            y = y,
-            data = merge_data,
-            orient = 'h',
-            dodge=True,
-            order= merge_data[y].unique()
+        # Align boxplots with their corresponding numeric y values using matplotlib
+        grouped_data = merge_data.groupby(y)
+        box_data = [group["summary"].values for name, group in grouped_data]
+        unique_y = [float(x) for x in grouped_data.groups.keys()]
+        plt.boxplot(
+            box_data,
+            vert=False,  # Horizontal boxplots
+            positions=unique_y,  # Numeric y positions
+            patch_artist=True,
+            widths=0.19  # Colored boxes
         )
+        plt.xlabel(x_label)
+        
 
+    elif type == "violin":
+        # Align violin plots with their corresponding numeric y values using matplotlib
+        grouped_data = merge_data.groupby(y)
+        violin_data = [group["summary"].values.tolist() for name, group in grouped_data]
+        unique_y = [float(x) for x in grouped_data.groups.keys()]
+        plt.violinplot(
+            violin_data,
+            vert=False,  # Horizontal violins
+            positions=unique_y,  # Numeric y positions,
+            showmedians=True
+        )
+        plt.xlabel(x_label)
 
+        quantile_data = [np.percentile(x, [25, 50, 75]) for x in violin_data]
+        # Overlay quantile lines
+        for i, y_pos in enumerate(unique_y):
+            q1, median, q3 = quantile_data[i]
+            plt.plot([q1, q3], [y_pos, y_pos], color = "k", linewidth=4, alpha=0.2)  # IQR line
 
     else:
         raise ValueError(f"Unknown plot type: {type}")
-    
+

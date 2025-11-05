@@ -26,18 +26,7 @@ atree = AnalysisTree()\
   .split_by(label = "Benin Y/N", expr = benin_fun)\
   .split_by(label = "Age Group", age40 = age_40, age60 = age_60)\
   .analyze_by(m = mfun, n = nfun, label = "Income analysis")\
-  .analyze_by(m = efun, label = "Education analysis")\
-  .split_at_root_by("df.Country")
-
-res = atree.run(df)
-
-atree = AnalysisTree()\
-  .split_by("df.Gender")\
-  .summarize_by(m = mfun, n = nfun)\
-  .split_by(label = "Benin Y/N", expr = benin_fun)\
-  .split_by(label = "Age Group", age40 = age_40, age60 = age_60)\
-  .analyze_by(m = mfun, n = nfun)\
-  .split_at_root_by("df.Country")
+  .analyze_by(m = efun, label = "Education analysis")
 
 res = atree.run(df)
 
@@ -45,4 +34,19 @@ res = atree.run(df)
 
 from pyMyriad.plots import distribution_plot
 
-data = distribution_plot(res, x = "Age", col= "Benin Y/N", type = "boxplot", jitter=True)
+# Adjusted call to distribution_plot with proper alignment for boxplots
+# distribution_plot(
+#     res, 
+#     x={"Unlabelled": "Age", "Income analysis": "Income", "Education analysis": "Education"}, 
+#     col="Benin Y/N", 
+#     type="violin", 
+#     jitter=True
+# )
+
+distribution_plot(
+    res, 
+    x=None, 
+   # col="Benin Y/N", 
+    type="violin", 
+    jitter=False
+)
