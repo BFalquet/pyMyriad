@@ -7,7 +7,7 @@ import warnings
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), type:str="forest", jitter:bool = False, show = True):
+def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), type:str = "forest", jitter:bool = False, show = True):
     """Create a forest plot from a DataTree object.
 
     Args:
@@ -40,8 +40,8 @@ def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), type:str="f
     res['path_pivot'] = res['path_pivot'].apply(lambda x: " >> ".join(x))
     res = res.loc[~(res['path_pivot'].isin(available_analysis) & (res['type'] != "analysis"))]
 
+    # Move index to column for pivot
     res = res.reset_index().rename(columns={'index': '_id'})
-
     res = res.pivot(
        index = ["_id", "depth", "split", "type", "path_pivot", "pivot_lvl", "pivot_split", "label", "y_label"], # y
        columns = "statistics",
@@ -63,10 +63,10 @@ def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), type:str="f
     # TODO: add color map to the side of the plot if col is not None
     # TODO: add assertion on the presence of x and x_err
 
-    # remove rows that are not analysis from data but keep the data frame for y_label calculation
+    # remove rows that are not analysis from data but keep the full data frame for y_label calculation
     res_data = res.loc[res["label"] != '__not__analysis__', :].copy()
 
-    # introducing jittering based on colour
+    # introducing jittering based on col
     if ((len(res_data['pivot_lvl'].unique()) > 1) & jitter):
         codes = pd.Categorical(res_data['pivot_lvl']).codes
         # min max normalization to [-0.3, +0.3]
@@ -183,7 +183,7 @@ def distribution_plot(dtree, type:str="forest", x:str = None, col:str = (), jitt
     res['path_pivot'] = res['path_pivot'].apply(lambda x: " >> ".join(x))
     res = res.loc[~(res['path_pivot'].isin(available_analysis) & (res['type'] != "analysis"))]
 
-    res = res.reset_index().rename(columns={'index': '_id'})
+    # res = res.reset_index().rename(columns={'index': '_id'})
 
     # Find the rank if the values in the y columns
     # - "dense" is not working because it is not respecting alphabetic order.
@@ -241,7 +241,6 @@ def distribution_plot(dtree, type:str="forest", x:str = None, col:str = (), jitt
 
     g.add_legend(title = "".join(res["pivot_split"].unique().tolist()))
 
-
     plt.subplots_adjust(wspace=0.2)
     plt.show()
 
@@ -249,6 +248,7 @@ def plot_distribution(data, type:str = "scatter", x:str = None, **kwargs):
     """Create a 1D plot.
 
     Args:
+        data (pd.DataFrame): The data frame containing the data to plot.
         type (str, optional): The type of plot to create. Currently supports "forest", "range", "bar", "point".
         x (str, optional): The column name for the x-axis values.
 
