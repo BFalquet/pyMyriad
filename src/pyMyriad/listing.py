@@ -67,29 +67,27 @@ def gt_table(
 
 	res = flatten(dtree, unnest=False, by=by)
 
-   # Get the analysis result with the paths to merge later
-   # Question: what if there are multiple analysis with same path but different labels?
-   inline_analysis = res.loc[res["type"] == "analysis", ["path", "summary", "label"]].copy()
+	# Get the analysis result with the paths to merge later
+	# Question: what if there are multiple analysis with same path but different labels?
+	inline_analysis = res.loc[res["type"] == "analysis", ["path", "summary", "label"]].copy()
 
-   # For now take the first label only
-   inline_analysis = inline_analysis.drop_duplicates(subset=['path'])
+	# For now take the first label only
+	inline_analysis = inline_analysis.drop_duplicates(subset=['path'])
 
-   # apply some sort of formatting on the summary to return a string
-   # TODO: create a `format` argument to allow user-defined formatting
-   inline_analysis['summary'] = inline_analysis['summary'].apply(lambda x: str(x) if x is not None else "")
+	# apply some sort of formatting on the summary to return a string
+	# TODO: create a `format` argument to allow user-defined formatting
+	inline_analysis['summary'] = inline_analysis['summary'].apply(lambda x: str(x) if x is not None else "")
 
-   # Get the unnested data frame ----
-   res_unnested = flatten(dtree, unnest=True, by=by)
+	# Get the unnested data frame ----
+	res_unnested = flatten(dtree, unnest=True, by=by)
 
-    # Remove the last element from path_pivot for y_label
-    res_unnested['y_label'] = res_unnested.apply(lambda row: str(row['path_pivot'][-2]) if row['type'] == "analysis" else row['lvl'] or row['split'] or "root", axis=1)
+	# Remove the last element from path_pivot for y_label
+	res_unnested['y_label'] = res_unnested.apply(lambda row: str(row['path_pivot'][-2]) if row['type'] == "analysis" else row['lvl'] or row['split'] or "root", axis=1)
 
-
-
-   # remove the last element from path for merging
-   inline_analysis['path'] = inline_analysis['path'].apply(lambda x: x[:-1] if isinstance(x, list) and len(x) > 0 else x)
-    # Merge the analysis summary back to the main table
-   res = res.merge(inline_analysis, on=["path"], suffixes=("", "_inline"), how="left")
+	# remove the last element from path for merging
+	inline_analysis['path'] = inline_analysis['path'].apply(lambda x: x[:-1] if isinstance(x, list) and len(x) > 0 else x)
+		# Merge the analysis summary back to the main table
+	res = res.merge(inline_analysis, on=["path"], suffixes=("", "_inline"), how="left")
 
 
 
