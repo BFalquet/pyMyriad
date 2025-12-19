@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, Union
+from typing import Optional
 
 import pandas as pd
 
@@ -8,20 +8,70 @@ from .data_tree import DataTree
 from .tabular import flatten
 
 
-def _format_path(path_list: list) -> str:
-	"""Turn a path list from flatten() into a readable breadcrumb string.
-
-	Removes the artificial "root" and trailing "analysis" elements when present.
-	"""
-	if not isinstance(path_list, list):
+def _clean_path_element(element: str) -> str:
+	"""Clean up path elements for display."""
+	if element is None:
 		return ""
+	element = str(element)
+	# Remove 'df.' prefix from expressions
+	if element.startswith("df."):
+		element = element[3:]
+	return element
 
-	core = [x for x in path_list if x is not None]
-	if core and core[0] == "root":
-		core = core[1:]
-	if core and core[-1] == "analysis":
-		core = core[:-1]
-	return " > ".join(core) if core else "root"
+
+def _split_path_into_levels(df: pd.DataFrame, path_col: str = "path") -> pd.DataFrame:
+	"""Split the path column into separate hierarchical level columns.
+	
+	Args:
+		df: DataFrame with a path column containing lists
+		path_col: Name of the column containing path lists
+		
+	Returns:
+		DataFrame with additional Level_0, Level_1, Level_2, etc. columns
+	"""
+	if path_col not in df.columns:
+		return df
+	
+	df = df.copy()
+	
+	# Clean paths: remove 'root' and 'analysis' markers
+	def clean_path(path_list):
+		if not isinstance(path_list, list):
+			return []
+		cleaned = []
+		for elem in path_list:
+			if elem not in ['root', 'analysis', None]:
+				cleaned.append(_clean_path_element(elem))
+		return cleaned
+	
+	df['_cleaned_path'] = df[path_col].apply(clean_path)
+	
+	# Find maximum depth
+	max_depth = df['_cleaned_path'].apply(len).max()
+	if pd.isna(max_depth) or max_depth == 0:
+		df = df.drop(columns=['_cleaned_path'])
+		return df
+	
+	# Create level columns
+	for i in range(int(max_depth)):
+		df[f'Level_{i}'] = df['_cleaned_path'].apply(
+			lambda x: x[i] if i < len(x) else None
+		)
+	
+	df = df.drop(columns=['_cleaned_path'])
+	
+	return df
+
+
+def _format_analysis_label(row: pd.Series) -> str:
+	"""Create a formatted label for analysis rows."""
+	if row.get('type') != 'analysis':
+		return ""
+	
+	label = row.get('label', '')
+	if not label or label == '':
+		return "Analysis"
+	return label
 
 
 def gt_table(
@@ -29,6 +79,7 @@ def gt_table(
 	by: str = "",
 	*,
 	include_non_analysis: bool = False,
+	split_path: bool = True,
 	title: Optional[str] = "Analysis Summary",
 	subtitle: Optional[str] = None,
 	decimals: int = 3,
@@ -45,6 +96,7 @@ def gt_table(
 			is applied.
 		include_non_analysis: If True, keep split/level rows; otherwise only
 			rows of type 'analysis' are shown.
+		split_path: If True, split the path into separate hierarchical columns.
 		title: Optional table title.
 		subtitle: Optional table subtitle.
 		decimals: Number of decimals for numeric formatting.
@@ -57,115 +109,191 @@ def gt_table(
 	"""
 
 	try:
-		# Import lazily so the package is only required when this function is used
 		from great_tables import GT
 	except Exception as e:
 		raise ImportError(
 			"great-tables is required for gt_table(). Install with `pip install great-tables`."
 		) from e
 
-
-	res = flatten(dtree, unnest=False, by=by)
-
-	# Get the analysis result with the paths to merge later
-	# Question: what if there are multiple analysis with same path but different labels?
-	inline_analysis = res.loc[res["type"] == "analysis", ["path", "summary", "label"]].copy()
-
-	# For now take the first label only
-	inline_analysis = inline_analysis.drop_duplicates(subset=['path'])
-
-	# apply some sort of formatting on the summary to return a string
-	# TODO: create a `format` argument to allow user-defined formatting
-	inline_analysis['summary'] = inline_analysis['summary'].apply(lambda x: str(x) if x is not None else "")
-
-	# Get the unnested data frame ----
-	res_unnested = flatten(dtree, unnest=True, by=by)
-
-	# Remove the last element from path_pivot for y_label
-	res_unnested['y_label'] = res_unnested.apply(lambda row: str(row['path_pivot'][-2]) if row['type'] == "analysis" else row['lvl'] or row['split'] or "root", axis=1)
-
-	# remove the last element from path for merging
-	inline_analysis['path'] = inline_analysis['path'].apply(lambda x: x[:-1] if isinstance(x, list) and len(x) > 0 else x)
-		# Merge the analysis summary back to the main table
-	res = res.merge(inline_analysis, on=["path"], suffixes=("", "_inline"), how="left")
-
-
-
-
-
-
-
-
-
-
-
-
-
-	# Keep only analysis rows by default (those have actual values)
-	if not include_non_analysis and "type" in df.columns:
+	# Get flattened data with unnested statistics
+	df = flatten(dtree, unnest=True, by=by)
+	
+	# Keep only analysis rows by default
+	if not include_non_analysis:
 		df = df[df["type"] == "analysis"].copy()
-
-	# Human-friendly path column
-	if "path_pivot" in df.columns:
-		df["Path"] = df["path_pivot"].apply(_format_path)
-	elif "path" in df.columns:
-		df["Path"] = df["path"].apply(_format_path)
-	else:
-		df["Path"] = ""
-
-	# Ensure consistent columns for downstream pivot/formatting
-	if unnest:
-		# statistics/values are present when unnest=True
-		if "statistics" not in df.columns or "values" not in df.columns:
-			raise ValueError("Expected 'statistics' and 'values' columns when unnest=True.")
-		df["Statistic"] = df["statistics"].astype(str)
-	else:
-		# Keep a single 'Value' column pointing to 'summary'
-		df["Statistic"] = "summary"
-		df = df.rename(columns={"summary": "values"})
-
-	# Compose a pivot label if we have pivot levels
-	def _pivot_label(x):
-		if isinstance(x, list) and len(x) > 0:
-			return " > ".join([str(v) for v in x])
-		return None
-
+	
+	if len(df) == 0:
+		# Return empty table if no data
+		empty_df = pd.DataFrame({"Message": ["No analysis results to display"]})
+		return GT(empty_df).tab_header(title=title or "Analysis Summary")
+	
+	# Split path into hierarchical levels
+	if split_path:
+		df = _split_path_into_levels(df, path_col="path")
+	
+	# Format analysis label
+	df['Analysis'] = df.apply(_format_analysis_label, axis=1)
+	
+	# Rename statistics column for display
+	if 'statistics' in df.columns:
+		df = df.rename(columns={'statistics': 'Statistic'})
+	
+	# Handle pivot columns if present
 	pivot_col = None
-	if "pivot_lvl" in df.columns:
-		df[".pivot_lbl"] = df["pivot_lvl"].apply(_pivot_label)
-		if df[".pivot_lbl"].notna().any():
-			pivot_col = ".pivot_lbl"
-
-	# Narrow to the essential columns before going wide
-	base_cols = [c for c in ["Path", "label", "Statistic", pivot_col, "values"] if c is not None]
-	dfw = df.loc[:, base_cols].copy()
-	dfw = dfw.rename(columns={"label": "Analysis", "values": "Value"})
-
-	# Pivot wide on the pivot label when present
-	if pivot_col is not None:
-		wide = (
-			dfw.pivot(index=["Path", "Analysis", "Statistic"], columns=pivot_col, values="Value")
-			.reset_index()
-		)
-	else:
-		wide = dfw
-
-	# Build the GT table and apply some light formatting
-	tbl = GT(wide)
+	if by and 'pivot_lvl' in df.columns:
+		def format_pivot(x):
+			if isinstance(x, list):
+				return " > ".join([_clean_path_element(str(v)) for v in x if v is not None])
+			return None
+		
+		df['Pivot'] = df['pivot_lvl'].apply(format_pivot)
+		if df['Pivot'].notna().any():
+			pivot_col = 'Pivot'
+	
+	# Select columns for display
+	level_cols = [c for c in df.columns if c.startswith('Level_')]
+	base_cols = level_cols + ['Analysis', 'Statistic']
+	
+	if pivot_col:
+		base_cols.append(pivot_col)
+	
+	base_cols.append('values')
+	
+	# Filter to essential columns
+	display_df = df[base_cols].copy()
+	display_df = display_df.rename(columns={'values': 'Value'})
+	
+	# Pivot if we have a pivot column
+	if pivot_col:
+		# Create a unique index for pivoting
+		index_cols = [c for c in display_df.columns if c not in [pivot_col, 'Value']]
+		display_df = display_df.pivot_table(
+			index=index_cols,
+			columns=pivot_col,
+			values='Value',
+			aggfunc='first'
+		).reset_index()
+	
+	# Remove rows where all level columns are None (shouldn't happen but just in case)
+	if level_cols:
+		display_df = display_df.dropna(subset=level_cols, how='all')
+	
+	# Build the GT table
+	tbl = GT(display_df)
+	
 	if title or subtitle:
 		tbl = tbl.tab_header(title=title, subtitle=subtitle)
-
+	
 	# Format numeric columns
-	num_cols = [c for c in wide.columns if c not in ("Path", "Analysis", "Statistic")]
-	if num_cols:
-		tbl = tbl.fmt_number(columns=num_cols, decimals=decimals)
-
-	# Slightly emphasize the row identifiers
-	# (Safe if methods aren't present; GT methods are chainable.)
+	numeric_cols = []
+	for col in display_df.columns:
+		if col not in level_cols + ['Analysis', 'Statistic', 'Pivot']:
+			# Check if column is numeric
+			if pd.api.types.is_numeric_dtype(display_df[col]):
+				numeric_cols.append(col)
+	
+	if numeric_cols:
+		tbl = tbl.fmt_number(columns=numeric_cols, decimals=decimals)
+	
+	# Add spanners for hierarchical levels if we have multiple levels
+	if len(level_cols) > 1:
+		try:
+			tbl = tbl.tab_spanner(label="Hierarchy", columns=level_cols)
+		except Exception:
+			pass
+	
+	# Style options
 	try:
 		tbl = tbl.opt_align_table_header(align="left")
+		tbl = tbl.tab_options(
+			table_font_size="12px",
+			heading_background_color="#f8f9fa",
+		)
 	except Exception:
 		pass
-
+	
 	return tbl
 
+
+def simple_table(
+	dtree: DataTree,
+	by: str = "",
+	*,
+	include_non_analysis: bool = False,
+	split_path: bool = True,
+) -> pd.DataFrame:
+	"""Create a simple pandas DataFrame table from a DataTree.
+	
+	This is a lightweight alternative to gt_table that doesn't require
+	the great-tables package.
+	
+	Args:
+		dtree: The DataTree to tabulate.
+		by: Split variable name(s) to pivot across columns.
+		include_non_analysis: If True, keep split/level rows.
+		split_path: If True, split the path into separate hierarchical columns.
+		
+	Returns:
+		A formatted pandas DataFrame.
+	"""
+	# Get flattened data with unnested statistics
+	df = flatten(dtree, unnest=True, by=by)
+	
+	# Keep only analysis rows by default
+	if not include_non_analysis:
+		df = df[df["type"] == "analysis"].copy()
+	
+	if len(df) == 0:
+		return pd.DataFrame({"Message": ["No analysis results to display"]})
+	
+	# Split path into hierarchical levels
+	if split_path:
+		df = _split_path_into_levels(df, path_col="path")
+	
+	# Format analysis label
+	df['Analysis'] = df.apply(_format_analysis_label, axis=1)
+	
+	# Rename statistics column for display
+	if 'statistics' in df.columns:
+		df = df.rename(columns={'statistics': 'Statistic'})
+	
+	# Handle pivot columns if present
+	pivot_col = None
+	if by and 'pivot_lvl' in df.columns:
+		def format_pivot(x):
+			if isinstance(x, list):
+				return " > ".join([_clean_path_element(str(v)) for v in x if v is not None])
+			return None
+		
+		df['Pivot'] = df['pivot_lvl'].apply(format_pivot)
+		if df['Pivot'].notna().any():
+			pivot_col = 'Pivot'
+	
+	# Select columns for display
+	level_cols = [c for c in df.columns if c.startswith('Level_')]
+	base_cols = level_cols + ['Analysis', 'Statistic']
+	
+	if pivot_col:
+		base_cols.append(pivot_col)
+	
+	base_cols.append('values')
+	
+	# Filter to essential columns
+	display_df = df[base_cols].copy()
+	display_df = display_df.rename(columns={'values': 'Value'})
+	
+	# Pivot if we have a pivot column
+	if pivot_col:
+		index_cols = [c for c in display_df.columns if c not in [pivot_col, 'Value']]
+		display_df = display_df.pivot_table(
+			index=index_cols,
+			columns=pivot_col,
+			values='Value',
+			aggfunc='first'
+		).reset_index()
+	
+	# Remove rows where all level columns are None
+	if level_cols:
+		display_df = display_df.dropna(subset=level_cols, how='all')
+	
+	return display_df
