@@ -46,7 +46,7 @@ from pyMyriad.plots import distribution_plot
 distribution_plot(
     res, 
     x=None, 
-   # col="Benin Y/N", 
+    col="Benin Y/N", 
     type="violin", 
     jitter=False
 )

@@ -28,6 +28,7 @@ def gt_table(
 	dtree: DataTree,
 	by: str = "",
 	*,
+	unnest = True,
 	include_non_analysis: bool = False,
 	title: Optional[str] = "Analysis Summary",
 	subtitle: Optional[str] = None,
@@ -35,7 +36,7 @@ def gt_table(
 ):
 	"""Create a Great Tables (gt) display table from a DataTree.
 
-	This builds on the long-form output of ``flatten`` and returns a nicely
+	This builds on the long-form output of `flatten` and returns a nicely
 	printable table using the Python Great Tables package.
 
 	Args:
@@ -43,6 +44,8 @@ def gt_table(
 		by: Split variable name(s) to pivot across columns. Use a string for a
 			single split or an iterable of split labels. If empty, no pivoting
 			is applied.
+		unnest: If True, the statisttics are represented in separate rows; if False,
+			only the summary value is shown.
 		include_non_analysis: If True, keep split/level rows; otherwise only
 			rows of type 'analysis' are shown.
 		title: Optional table title.
@@ -84,22 +87,23 @@ def gt_table(
 	# Remove the last element from path_pivot for y_label
 	res_unnested['y_label'] = res_unnested.apply(lambda row: str(row['path_pivot'][-2]) if row['type'] == "analysis" else row['lvl'] or row['split'] or "root", axis=1)
 
-	# remove the last element from path for merging
+	# remove the last element from path for merging
 	inline_analysis['path'] = inline_analysis['path'].apply(lambda x: x[:-1] if isinstance(x, list) and len(x) > 0 else x)
-		# Merge the analysis summary back to the main table
-	res = res.merge(inline_analysis, on=["path"], suffixes=("", "_inline"), how="left")
+	inline_analysis['path_str'] = inline_analysis['path'].apply(lambda x: str(x) if isinstance(x, list) else x)
+	res_unnested['path_str'] = res_unnested['path'].apply(lambda x: str(x) if isinstance(x, list) else x)
+	
+	# Merge the analysis summary back to the main table
+	res_unnested = res_unnested.merge(inline_analysis[['path_str', 'summary', 'label']], on=["path_str"], suffixes=("", "_inline"), how="left")
 
-
-
-
-
-
-
-
-
-
-
-
+	# Assign to df for downstream processing
+	df = res_unnested.copy()
+	# unnest = True  # We already unnested the data
+	
+	# Update the label column to include inline analysis if present
+	df['label'] = df['label'].fillna(df['label_inline'])
+	
+	# Drop the inline columns we don't need anymore
+	df = df.drop(columns=[col for col in df.columns if col.endswith('_inline') or col == 'path_str'], errors='ignore')
 
 	# Keep only analysis rows by default (those have actual values)
 	if not include_non_analysis and "type" in df.columns:
@@ -152,8 +156,8 @@ def gt_table(
 
 	# Build the GT table and apply some light formatting
 	tbl = GT(wide)
-	if title or subtitle:
-		tbl = tbl.tab_header(title=title, subtitle=subtitle)
+	if title:
+		tbl = tbl.tab_header(title=title, subtitle=subtitle or "")
 
 	# Format numeric columns
 	num_cols = [c for c in wide.columns if c not in ("Path", "Analysis", "Statistic")]

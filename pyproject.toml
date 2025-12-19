@@ -9,6 +9,7 @@ dependencies = [
     "numpy>=1.22.0",
     "pandas>=2.0.0",
     "plotly>=6.3.0",
+    "great-tables>=0.14.0",
 ]
 
 [dependency-groups]

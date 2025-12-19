@@ -20,7 +20,7 @@ def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), type:str = 
         show (bool, optional): Whether to display the plot immediately. If False, returns the figure object. Defaults to True.
 
     Examples:
-
+P
     """
 
     res = flatten(dtree, unnest=True, by = col)
