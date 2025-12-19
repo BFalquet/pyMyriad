@@ -13,25 +13,67 @@ Instead of showing paths as a single string like `"Gender > F > Country > UK"`, 
 | Level_0 | Level_1 | Level_2 | Level_3 | Statistic | Value |
 |---------|---------|---------|---------|-----------|-------|
 | Gender  | F       | Country | UK      | mean      | 75000 |
+|         |         |         | US      | mean      | 70000 |
+|         | M       |         | UK      | mean      | 60000 |
 
 **Benefits:**
 - Easier to filter and sort by specific hierarchy levels
 - Better alignment and readability
 - Natural grouping in spreadsheet applications
 - Clearer understanding of the analysis structure
+- Duplicate values are automatically suppressed for cleaner display
 
 ### 2. Clean Path Elements
 
 The listing automatically cleans up path elements:
 - Removes `df.` prefixes from expressions
 - Hides `root` and `analysis` markers
+- Removes redundant `Analysis` column
 - Displays only meaningful hierarchy information
 
 **Example:**
 - Before: `df.Gender` → After: `Gender`
 - Before: `df.Age > 40` → After: `Age > 40`
+- Before: Analysis column showing "Analysis" → After: Column removed
 
-### 3. Two Functions for Different Needs
+### 3. Duplicate Suppression
+
+Consecutive duplicate values in hierarchy columns are automatically suppressed (replaced with empty strings) for cleaner, more readable tables:
+
+**Example:**
+```
+Level_0 | Level_1 | Statistic | Value
+--------|---------|-----------|-------
+Gender  | F       | mean      | 75000
+        |         | count     | 10
+        | M       | mean      | 60000
+        |         | count     | 8
+```
+
+This makes it much easier to see the structure at a glance. You can disable this with `suppress_duplicates=False`.
+
+### 4. Smart Pivot Functionality
+
+When pivoting by a split variable, the listing automatically:
+- Removes the level column containing the pivot values
+- Combines rows for side-by-side comparison
+- Creates clean column headers from the pivot values
+
+**Example:**
+```python
+# Without pivot
+Level_0 | Level_1 | Level_2 | Level_3 | Statistic | Value
+Gender  | F       | Country | UK      | mean      | 75000
+Gender  | M       | Country | UK      | mean      | 60000
+
+# With pivot by Gender
+Level_0 | Level_2 | Level_3 | Statistic | F     | M
+Gender  | Country | UK      | mean      | 75000 | 60000
+```
+
+Notice how Level_1 (which contained F and M) is removed, and the values become column headers.
+
+### 5. Two Functions for Different Needs
 
 #### `simple_table()` - Lightweight, No Dependencies
 
@@ -178,23 +220,25 @@ result = simple_table(dtree)
 
 ## Function Parameters
 
-### `simple_table(dtree, by="", include_non_analysis=False, split_path=True)`
+### `simple_table(dtree, by="", include_non_analysis=False, split_path=True, suppress_duplicates=True)`
 
 **Parameters:**
 - `dtree` (DataTree): The DataTree object to display
 - `by` (str): Split variable name to pivot by (default: no pivot)
 - `include_non_analysis` (bool): Include intermediate tree nodes (default: False)
 - `split_path` (bool): Split paths into hierarchical columns (default: True)
+- `suppress_duplicates` (bool): Suppress consecutive duplicate values (default: True)
 
 **Returns:** pandas DataFrame
 
-### `gt_table(dtree, by="", include_non_analysis=False, split_path=True, title=None, subtitle=None, decimals=3)`
+### `gt_table(dtree, by="", include_non_analysis=False, split_path=True, suppress_duplicates=True, title=None, subtitle=None, decimals=3)`
 
 **Parameters:**
 - `dtree` (DataTree): The DataTree object to display
 - `by` (str): Split variable name to pivot by (default: no pivot)
 - `include_non_analysis` (bool): Include intermediate tree nodes (default: False)
 - `split_path` (bool): Split paths into hierarchical columns (default: True)
+- `suppress_duplicates` (bool): Suppress consecutive duplicate values (default: True)
 - `title` (str): Table title (default: "Analysis Summary")
 - `subtitle` (str): Table subtitle (default: None)
 - `decimals` (int): Number of decimal places for numeric values (default: 3)
@@ -287,6 +331,28 @@ result = simple_table(dtree, split_path=False)
 ```
 
 This keeps the path as a list in a single column instead of splitting into Level_* columns.
+
+### Controlling Duplicate Suppression
+
+By default, consecutive duplicate values are suppressed for cleaner display:
+
+```python
+# With suppression (default)
+result = simple_table(dtree, suppress_duplicates=True)
+# Output:
+# Level_0 | Level_1 | Statistic | Value
+# Gender  | F       | mean      | 75000
+#         |         | count     | 10
+
+# Without suppression
+result = simple_table(dtree, suppress_duplicates=False)
+# Output:
+# Level_0 | Level_1 | Statistic | Value
+# Gender  | F       | mean      | 75000
+# Gender  | F       | count     | 10
+```
+
+Suppression makes tables more readable but can be disabled if you need all values explicitly shown.
 
 ## Migration from Old Listing
 

@@ -49,6 +49,10 @@ print("\n" + "=" * 80)
 print("EXAMPLE 2: Analysis with Pivot")
 print("=" * 80)
 print("\nPivoting by Gender to compare side-by-side...\n")
+print("Notice how:")
+print("  - The Gender values (M/F) become column headers")
+print("  - Level_1 is removed (it contained the Gender values)")
+print("  - Rows are combined for easy comparison\n")
 
 # Same analysis but pivoted by Gender
 result_pivot = simple_table(dtree, by="df.Gender")
@@ -140,6 +144,19 @@ result6 = simple_table(dtree, split_path=False)
 print(result6.to_string())
 
 print("\n" + "=" * 80)
+print("EXAMPLE 8: Duplicate Suppression")
+print("=" * 80)
+print("\nBy default, consecutive duplicate values are suppressed for cleaner display:\n")
+
+result_suppress = simple_table(dtree, suppress_duplicates=True)
+print("WITH suppression (default):")
+print(result_suppress.head(10).to_string())
+
+print("\n\nWITHOUT suppression:")
+result_no_suppress = simple_table(dtree, suppress_duplicates=False)
+print(result_no_suppress.head(10).to_string())
+
+print("\n" + "=" * 80)
 print("KEY FEATURES OF THE NEW LISTING FUNCTIONALITY")
 print("=" * 80)
 print("""
@@ -149,18 +166,26 @@ print("""
 2. CLEAN LABELS: 'df.' prefixes are removed, and 'root' and 'analysis' markers
    are hidden for cleaner display.
 
-3. PIVOT SUPPORT: Use the 'by' parameter to pivot results by any split variable,
-   creating side-by-side comparisons.
+3. DUPLICATE SUPPRESSION: Consecutive duplicate values in hierarchy columns are
+   automatically suppressed (shown as empty) for cleaner, more readable tables.
 
-4. FLEXIBLE DISPLAY: Control what's shown with:
+4. SMART PIVOT: Use the 'by' parameter to pivot results by any split variable.
+   The pivoted level is automatically removed, and rows are properly combined
+   for side-by-side comparisons.
+
+5. NO REDUNDANT COLUMNS: The 'Analysis' column is removed since it only shows
+   "Analysis" for all rows.
+
+6. FLEXIBLE DISPLAY: Control what's shown with:
    - include_non_analysis: Show/hide intermediate tree nodes
    - split_path: Enable/disable hierarchical column splitting
+   - suppress_duplicates: Enable/disable duplicate suppression
 
-5. SIMPLE_TABLE vs GT_TABLE:
+7. SIMPLE_TABLE vs GT_TABLE:
    - simple_table(): Returns a pandas DataFrame (no dependencies)
    - gt_table(): Returns a formatted Great Tables object (requires great-tables)
 
-6. MULTI-LEVEL ANALYSES: Properly handles both terminal analyses (.analyze_by)
+8. MULTI-LEVEL ANALYSES: Properly handles both terminal analyses (.analyze_by)
    and intermediate summaries (.summarize_by) at different tree levels.
 """)
 
