@@ -23,14 +23,10 @@ df = pd.DataFrame({
     "Education_Years": np.random.randint(10, 20, 100),
 })
 
-print("=" * 80)
-print("EXAMPLE 1: Basic Hierarchical Analysis")
-print("=" * 80)
-print("\nAnalyzing income by Gender and Country...\n")
-
 # Create a hierarchical analysis tree
 atree = AnalysisTree()\
     .split_by("df.Gender")\
+    .summarize_by(mean_income=lambda df: np.mean(df.Income))\
     .split_by("df.Country")\
     .analyze_by(
         mean_income=lambda df: np.mean(df.Income),
@@ -45,17 +41,8 @@ dtree = atree.run(df)
 result = simple_table(dtree)
 print(result.to_string())
 
-print("\n" + "=" * 80)
-print("EXAMPLE 2: Analysis with Pivot")
-print("=" * 80)
-print("\nPivoting by Gender to compare side-by-side...\n")
-print("Notice how:")
-print("  - The Gender values (M/F) become column headers")
-print("  - Level_1 is removed (it contained the Gender values)")
-print("  - Rows are combined for easy comparison\n")
-
-# Same analysis but pivoted by Gender
-result_pivot = simple_table(dtree, by="df.Gender")
+# Same analysis but pivoted by Country
+result_pivot = simple_table(dtree, by="df.Country")
 print(result_pivot.to_string())
 
 print("\n" + "=" * 80)
@@ -66,6 +53,7 @@ print("\nAdding intermediate summaries at each level...\n")
 # Create analysis with intermediate summaries
 atree2 = AnalysisTree()\
     .split_by("df.Gender")\
+    .split_at_root_by("df.Education_Years")\
     .summarize_by(
         gender_mean=lambda df: np.mean(df.Income),
         gender_count=lambda df: len(df)

@@ -19,7 +19,7 @@ def _clean_path_element(element: str) -> str:
 	return element
 
 
-def _split_path_into_levels(df: pd.DataFrame, path_col: str = "path") -> pd.DataFrame:
+def _split_path_into_levels(df: pd.DataFrame, path_col: str = "path") -> tuple[pd.DataFrame, list]:
 	"""Split the path column into separate hierarchical level columns.
 	
 	Args:
@@ -28,6 +28,7 @@ def _split_path_into_levels(df: pd.DataFrame, path_col: str = "path") -> pd.Data
 		
 	Returns:
 		DataFrame with additional Level_0, Level_1, Level_2, etc. columns
+		List with the name of the new level columns
 	"""
 	if path_col not in df.columns:
 		return df
@@ -54,25 +55,13 @@ def _split_path_into_levels(df: pd.DataFrame, path_col: str = "path") -> pd.Data
 	
 	# Create level columns
 	for i in range(int(max_depth)):
-		df[f'Level_{i}'] = df['_cleaned_path'].apply(
+		df[f'_Level_{i}'] = df['_cleaned_path'].apply(
 			lambda x: x[i] if i < len(x) else None
 		)
 	
 	df = df.drop(columns=['_cleaned_path'])
 	
-	return df
-
-
-def _format_analysis_label(row: pd.Series) -> str:
-	"""Create a formatted label for analysis rows."""
-	if row.get('type') != 'analysis':
-		return ""
-	
-	label = row.get('label', '')
-	if not label or label == '':
-		return "Analysis"
-	return label
-
+	return (df, [f'_Level_{i}' for i in range(int(max_depth))])
 
 def _suppress_duplicate_values(df: pd.DataFrame, columns: list) -> pd.DataFrame:
 	"""Suppress duplicate consecutive values in specified columns.
@@ -134,160 +123,6 @@ def _identify_pivot_levels(df: pd.DataFrame, by: str) -> list:
 	
 	return pivot_level_cols
 
-
-def gt_table(
-	dtree: DataTree,
-	by: str = "",
-	*,
-	include_non_analysis: bool = False,
-	split_path: bool = True,
-	suppress_duplicates: bool = True,
-	title: Optional[str] = "Analysis Summary",
-	subtitle: Optional[str] = None,
-	decimals: int = 3,
-):
-	"""Create a Great Tables (gt) display table from a DataTree.
-
-	This builds on the long-form output of ``flatten`` and returns a nicely
-	printable table using the Python Great Tables package.
-
-	Args:
-		dtree: The DataTree to tabulate.
-		by: Split variable name(s) to pivot across columns. Use a string for a
-			single split or an iterable of split labels. If empty, no pivoting
-			is applied.
-		include_non_analysis: If True, keep split/level rows; otherwise only
-			rows of type 'analysis' are shown.
-		split_path: If True, split the path into separate hierarchical columns.
-		suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
-		title: Optional table title.
-		subtitle: Optional table subtitle.
-		decimals: Number of decimals for numeric formatting.
-
-	Returns:
-		A great_tables.GT object ready for display/printing.
-
-	Raises:
-		ImportError: If the great-tables package is not installed.
-	"""
-
-	try:
-		from great_tables import GT
-	except Exception as e:
-		raise ImportError(
-			"great-tables is required for gt_table(). Install with `pip install great-tables`."
-		) from e
-
-	# Get flattened data with unnested statistics
-	df = flatten(dtree, unnest=True, by=by)
-	
-	# Keep only analysis rows by default
-	if not include_non_analysis:
-		df = df[df["type"] == "analysis"].copy()
-	
-	if len(df) == 0:
-		# Return empty table if no data
-		empty_df = pd.DataFrame({"Message": ["No analysis results to display"]})
-		return GT(empty_df).tab_header(title=title or "Analysis Summary")
-	
-	# Split path into hierarchical levels
-	if split_path:
-		df = _split_path_into_levels(df, path_col="path")
-	
-	# Rename statistics column for display
-	if 'statistics' in df.columns:
-		df = df.rename(columns={'statistics': 'Statistic'})
-	
-	# Handle pivot columns if present
-	pivot_col = None
-	pivot_level_cols = []
-	if by and 'pivot_lvl' in df.columns:
-		def format_pivot(x):
-			if isinstance(x, list):
-				return " > ".join([_clean_path_element(str(v)) for v in x if v is not None])
-			return None
-		
-		df['Pivot'] = df['pivot_lvl'].apply(format_pivot)
-		if df['Pivot'].notna().any():
-			pivot_col = 'Pivot'
-			# Identify which level columns should be removed after pivoting
-			pivot_level_cols = _identify_pivot_levels(df, by)
-	
-	# Select columns for display
-	level_cols = [c for c in df.columns if c.startswith('Level_')]
-	base_cols = level_cols + ['Statistic']
-	
-	if pivot_col:
-		base_cols.append(pivot_col)
-	
-	base_cols.append('values')
-	
-	# Filter to essential columns
-	display_df = df[base_cols].copy()
-	display_df = display_df.rename(columns={'values': 'Value'})
-	
-	# Pivot if we have a pivot column
-	if pivot_col:
-		# First remove the level columns that will be pivoted
-		for col in pivot_level_cols:
-			if col in display_df.columns:
-				display_df = display_df.drop(columns=[col])
-		
-		# Now pivot with the remaining columns
-		index_cols = [c for c in display_df.columns if c not in [pivot_col, 'Value']]
-		display_df = display_df.pivot_table(
-			index=index_cols,
-			columns=pivot_col,
-			values='Value',
-			aggfunc='first'
-		).reset_index()
-	
-	# Remove rows where all level columns are None
-	remaining_level_cols = [c for c in display_df.columns if c.startswith('Level_')]
-	if remaining_level_cols:
-		display_df = display_df.dropna(subset=remaining_level_cols, how='all')
-	
-	# Suppress duplicate values in hierarchy columns for cleaner display
-	if suppress_duplicates and remaining_level_cols:
-		display_df = _suppress_duplicate_values(display_df, remaining_level_cols)
-	
-	# Build the GT table
-	tbl = GT(display_df)
-	
-	if title or subtitle:
-		tbl = tbl.tab_header(title=title, subtitle=subtitle)
-	
-	# Format numeric columns
-	numeric_cols = []
-	for col in display_df.columns:
-		if col not in remaining_level_cols + ['Statistic', 'Pivot']:
-			# Check if column is numeric
-			if pd.api.types.is_numeric_dtype(display_df[col]):
-				numeric_cols.append(col)
-	
-	if numeric_cols:
-		tbl = tbl.fmt_number(columns=numeric_cols, decimals=decimals)
-	
-	# Add spanners for hierarchical levels if we have multiple levels
-	if len(remaining_level_cols) > 1:
-		try:
-			tbl = tbl.tab_spanner(label="Hierarchy", columns=remaining_level_cols)
-		except Exception:
-			pass
-	
-	# Style options
-	try:
-		tbl = tbl.opt_align_table_header(align="left")
-		tbl = tbl.tab_options(
-			table_font_size="12px",
-			heading_background_color="#f8f9fa",
-		)
-	except Exception:
-		pass
-	
-	return tbl
-
-
 def simple_table(
 	dtree: DataTree,
 	by: str = "",
@@ -321,65 +156,142 @@ def simple_table(
 	if len(df) == 0:
 		return pd.DataFrame({"Message": ["No analysis results to display"]})
 	
-	# Split path into hierarchical levels
-	if split_path:
-		df = _split_path_into_levels(df, path_col="path")
-	
-	# Rename statistics column for display
-	if 'statistics' in df.columns:
-		df = df.rename(columns={'statistics': 'Statistic'})
-	
+	# Select columns
+	df = df[['path_pivot', 'pivot_split', 'pivot_lvl', 'statistics', 'values', 'label', 'depth']].copy()
+
+	# join all elements of path_pivot into a single string for display
+	df['path_pivot'] = df['path_pivot'].apply(lambda x: " > ".join([_clean_path_element(str(v)) for v in x if v is not None]) if isinstance(x, list) else "")
+	df['pivot_lvl'] = df['pivot_lvl'].apply(lambda x: " > ".join([_clean_path_element(str(v)) for v in x if v is not None]) if isinstance(x, list) else "")
+
 	# Handle pivot columns if present
-	pivot_col = None
-	pivot_level_cols = []
-	if by and 'pivot_lvl' in df.columns:
-		def format_pivot(x):
-			if isinstance(x, list):
-				return " > ".join([_clean_path_element(str(v)) for v in x if v is not None])
-			return None
-		
-		df['Pivot'] = df['pivot_lvl'].apply(format_pivot)
-		if df['Pivot'].notna().any():
-			pivot_col = 'Pivot'
-			# Identify which level columns should be removed after pivoting
-			pivot_level_cols = _identify_pivot_levels(df, by)
-	
-	# Select columns for display
-	level_cols = [c for c in df.columns if c.startswith('Level_')]
-	base_cols = level_cols + ['Statistic']
-	
-	if pivot_col:
-		base_cols.append(pivot_col)
-	
-	base_cols.append('values')
-	
-	# Filter to essential columns
-	display_df = df[base_cols].copy()
-	display_df = display_df.rename(columns={'values': 'Value'})
-	
-	# Pivot if we have a pivot column
-	if pivot_col:
-		# First remove the level columns that will be pivoted
-		for col in pivot_level_cols:
-			if col in display_df.columns:
-				display_df = display_df.drop(columns=[col])
-		
-		# Now pivot with the remaining columns
-		index_cols = [c for c in display_df.columns if c not in [pivot_col, 'Value']]
-		display_df = display_df.pivot_table(
-			index=index_cols,
-			columns=pivot_col,
-			values='Value',
+	pivot_columns = []
+
+	if by != "":
+		pivot_columns = df['pivot_lvl'].unique().tolist()
+		df = df.pivot_table(
+			index=['depth', 'path_pivot', 'label', 'statistics'],
+			columns='pivot_lvl',
+			values='values',
 			aggfunc='first'
 		).reset_index()
+
+	else:
+		pivot_columns = ["values"]
+
+	# Revert joining of path_pivot back to list
+	df['path_pivot'] = df['path_pivot'].apply(lambda x: x.split(" > ") if isinstance(x, str) else [])
+
+	df, pivot_level_cols = _split_path_into_levels(df, path_col="path_pivot")
 	
+	df = df.drop(columns=['path_pivot'])
+	# reorder columns to have levels first
+	display_cols = list(pivot_level_cols) + ['statistics'] + pivot_columns
+	display_df = df[display_cols].copy()
+	display_df = display_df.rename(columns={'statistics': 'Statistic', 'values': 'Value'})
+
 	# Remove rows where all level columns are None
-	remaining_level_cols = [c for c in display_df.columns if c.startswith('Level_')]
-	if remaining_level_cols:
-		display_df = display_df.dropna(subset=remaining_level_cols, how='all')
+	remaining_level_cols = [c for c in display_df.columns if c.startswith('_Level_')]
+	# if remaining_level_cols:
+	# 	display_df = display_df.dropna(subset=remaining_level_cols, how='all')
 	
 	# Suppress duplicate values in hierarchy columns for cleaner display
 	if suppress_duplicates and remaining_level_cols:
 		display_df = _suppress_duplicate_values(display_df, remaining_level_cols)
+
+    # Final cleanup of display DataFrame
+	# Replace None in level columns with "--" for better visibility
+	for col in remaining_level_cols:
+		display_df[col] = display_df[col].replace({None: "--"})
 	
 	return display_df
+
+
+def gt_table(
+	dtree: DataTree,
+	by: str = "",
+	*,
+	include_non_analysis: bool = False,
+	split_path: bool = True,
+	suppress_duplicates: bool = True,
+	title: Optional[str] = "Analysis Summary",
+	subtitle: Optional[str] = None,
+	decimals: int = 3,
+) -> "GT":
+	"""Create a Great Tables (gt) display table from a DataTree.
+
+	This builds on the long-form output of ``flatten`` and returns a nicely
+	printable table using the Python Great Tables package.
+
+	Args:
+		dtree: The DataTree to tabulate.
+		by: Split variable name(s) to pivot across columns. Use a string for a
+			single split or an iterable of split labels. If empty, no pivoting
+			is applied.
+		include_non_analysis: If True, keep split/level rows; otherwise only
+			rows of type 'analysis' are shown.
+		split_path: If True, split the path into separate hierarchical columns.
+		suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
+		title: Optional table title.
+		subtitle: Optional table subtitle.
+		decimals: Number of decimals for numeric formatting.
+
+	Returns:
+		A great_tables.GT object ready for display/printing.
+
+	Raises:
+		ImportError: If the great-tables package is not installed.
+	"""
+
+	try:
+		from great_tables import GT
+	except Exception as e:
+		raise ImportError(
+			"great-tables is required for gt_table(). Install with `pip install great-tables`."
+		) from e
+
+    
+	display_df = simple_table(
+		dtree,
+		by=by,
+		include_non_analysis=include_non_analysis,
+		split_path=split_path,
+		suppress_duplicates=suppress_duplicates,
+	)
+
+	# Build the GT table
+	tbl = GT(display_df)
+	
+	if title or subtitle:
+		tbl = tbl.tab_header(title=title, subtitle=subtitle)
+	
+	remaining_level_cols = [c for c in display_df.columns if c.startswith('_Level_')]
+	
+	# Format numeric columns
+	numeric_cols = []
+	for col in display_df.columns:
+		if col not in remaining_level_cols + ['Statistic', 'Pivot']:
+			# Check if column is numeric
+			if pd.api.types.is_numeric_dtype(display_df[col]):
+				numeric_cols.append(col)
+	
+	if numeric_cols:
+		tbl = tbl.fmt_number(columns=numeric_cols, decimals=decimals)
+	
+	# Add spanners for hierarchical levels if we have multiple levels
+	if len(remaining_level_cols) > 1:
+		try:
+			tbl = tbl.tab_spanner(label="Hierarchy", columns=remaining_level_cols)
+		except Exception:
+			pass
+	
+	# Style options
+	try:
+		tbl = tbl.opt_align_table_header(align="left")
+		tbl = tbl.tab_options(
+			table_font_size="12px",
+			heading_background_color="#f8f9fa",
+		)
+	except Exception:
+		pass
+	
+	return tbl
