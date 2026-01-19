@@ -210,6 +210,7 @@ def gt_table(
 	dtree: DataTree,
 	by: str = "",
 	*,
+	unnest = True,
 	include_non_analysis: bool = False,
 	split_path: bool = True,
 	suppress_duplicates: bool = True,
@@ -219,7 +220,7 @@ def gt_table(
 ) -> "GT":
 	"""Create a Great Tables (gt) display table from a DataTree.
 
-	This builds on the long-form output of ``flatten`` and returns a nicely
+	This builds on the long-form output of `flatten` and returns a nicely
 	printable table using the Python Great Tables package.
 
 	Args:
@@ -227,6 +228,8 @@ def gt_table(
 		by: Split variable name(s) to pivot across columns. Use a string for a
 			single split or an iterable of split labels. If empty, no pivoting
 			is applied.
+		unnest: If True, the statisttics are represented in separate rows; if False,
+			only the summary value is shown.
 		include_non_analysis: If True, keep split/level rows; otherwise only
 			rows of type 'analysis' are shown.
 		split_path: If True, split the path into separate hierarchical columns.

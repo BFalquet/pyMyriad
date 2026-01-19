@@ -11,10 +11,9 @@
 ### TODO
 
 - tree contstruction
-  - split_at
-  - split_root
-  - summarize (analyze without termination)
-  - 
+  - split_at => done
+  - split_root => done
+  - summarize (analyze without termination) => done
 
 - Tabular
     - column pivot
@@ -22,14 +21,13 @@
     - transformation to gt
 
 - plots
-    - forest plot
-    - polish title and legend
-    - polish background
-    - 
+    - introduce legend for the colors
+    - change type to a dictionary to allow the display of different plot type in the same plot.
+    - more control on the colors (e.g a `by` argument mutually exclusive with a `col` argument)
 
 - documentation
-  - provide a few example
-    -  
+  - provide a few example 
+  -  
 
 
 print method
