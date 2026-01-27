@@ -170,21 +170,32 @@ def simple_table(
 
 	if by != "" and pivot_statistics:
 		# Pivot by both split variable and statistics
-		pivot_columns = []
-		for lvl in df['pivot_lvl'].unique():
-			for stat in df['statistics'].unique():
-				col_name = f"{lvl} ({stat})"
-				pivot_columns.append(col_name)
-		
-		# Create combined pivot column
-		df['_pivot_stat'] = df['pivot_lvl'] + ' (' + df['statistics'] + ')'
-		
+		# Use MultiIndex pivot to create hierarchical columns
 		df = df.pivot_table(
 			index=['depth', 'path_pivot', 'label'],
-			columns='_pivot_stat',
+			columns=['pivot_lvl', 'statistics'],
 			values='values',
 			aggfunc='first'
 		).reset_index()
+		
+		# Flatten the MultiIndex columns
+		# After reset_index, ALL columns become tuples: ('name', '') for index cols, ('group', 'stat') for data cols
+		new_cols = []
+		for col in df.columns:
+			if isinstance(col, tuple):
+				if col[1] == '':
+					# This is an index column: ('depth', ''), ('path_pivot', ''), etc.
+					new_cols.append(col[0])
+				else:
+					# This is a data column: ('F', 'm'), ('M', 'n'), etc.
+					new_cols.append(f"{col[0]}||{col[1]}")  # Use || as separator
+			else:
+				# Fallback for non-tuple columns (shouldn't happen with MultiIndex)
+				new_cols.append(col)
+		df.columns = new_cols
+		
+		# Get the pivot columns for later use
+		pivot_columns = [col for col in df.columns if '||' in str(col)]
 		
 	elif by != "":
 		# Pivot only by split variable
@@ -339,18 +350,27 @@ def gt_table(
 	# Add spanners for pivot groups when using pivot_statistics with by
 	if pivot_statistics and by != "":
 		try:
-			# Identify columns with the pattern "GroupName (statistic)"
-			pivot_cols = [col for col in display_df.columns if '(' in str(col) and ')' in str(col)]
+			# Identify columns with the pattern "GroupName||statistic"
+			pivot_cols = [col for col in display_df.columns if '||' in str(col)]
 			
 			if pivot_cols:
-				# Extract unique group names
+				# Extract unique group names and organize columns
 				group_dict = {}
+				col_rename = {}
+				
 				for col in pivot_cols:
-					# Extract group name before the parenthesis
-					group_name = col.split(' (')[0]
-					if group_name not in group_dict:
-						group_dict[group_name] = []
-					group_dict[group_name].append(col)
+					# Split on the separator
+					parts = col.split('||')
+					if len(parts) == 2:
+						group_name, stat_name = parts
+						if group_name not in group_dict:
+							group_dict[group_name] = []
+						group_dict[group_name].append(col)
+						# Rename column to just the statistic name
+						col_rename[col] = stat_name
+				
+				# Rename columns to remove group names
+				tbl = tbl.cols_label(**col_rename)
 				
 				# Add a spanner for each group
 				for group_name, cols in group_dict.items():
