@@ -3,6 +3,9 @@ import numpy as np
 from pyMyriad import *
 from pyMyriad.tabular import flatten
 
+# Set random seed for reproducibility
+np.random.seed(42)
+
 df = pd.DataFrame({
   "id": np.arange(1000),
   "Gender": np.random.choice(["M", "F"], 1000),
@@ -30,11 +33,44 @@ atree = AnalysisTree()\
 
 res = atree.run(df)
 
+# ============================================================================
+# DEMONSTRATION OF NEW LISTING FUNCTIONALITY
+# ============================================================================
+
+print("=" * 80)
+print("HIERARCHICAL TABLE VIEW (using simple_table)")
+print("=" * 80)
+print("\nThis shows the analysis results with hierarchical columns:")
+print("Level_0, Level_1, Level_2, etc. represent different levels of grouping\n")
+
+# Display results with hierarchical columns
+table = simple_table(res)
+print(table.to_string())
+
+print("\n" + "=" * 80)
+print("PIVOTED VIEW BY GENDER")
+print("=" * 80)
+print("\nSame data pivoted by Gender for side-by-side comparison:\n")
+
+# Pivot by Gender
+table_pivot = simple_table(res, by="df.Gender")
+print(table_pivot.head(20).to_string())
+print(f"\n... ({len(table_pivot)} total rows)")
+
+print("\n" + "=" * 80)
+print("TRADITIONAL FLATTEN VIEW (for comparison)")
+print("=" * 80)
+print("\nThe old flatten() function still works:\n")
+
+# Traditional flatten for comparison
+flat = flatten(res, unnest=True)
+print(flat[['path', 'type', 'label', 'statistics', 'values']].head(10).to_string())
+print(f"\n... ({len(flat)} total rows)")
+
+# Uncomment to see plots
 # forest_plot(res, x = "m", x_err="n", type = "forest", col = "Benin Y/N", jitter = True)
 
-from pyMyriad.plots import distribution_plot
-
-# Adjusted call to distribution_plot with proper alignment for boxplots
+# from pyMyriad.plots import distribution_plot
 # distribution_plot(
 #     res, 
 #     x={"Unlabelled": "Age", "Income analysis": "Income", "Education analysis": "Education"}, 
@@ -43,10 +79,3 @@ from pyMyriad.plots import distribution_plot
 #     jitter=True
 # )
 
-distribution_plot(
-    res, 
-    x=None, 
-    col="Benin Y/N", 
-    type="violin", 
-    jitter=False
-)
