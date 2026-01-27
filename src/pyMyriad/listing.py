@@ -130,6 +130,7 @@ def simple_table(
 	include_non_analysis: bool = False,
 	split_path: bool = True,
 	suppress_duplicates: bool = True,
+	pivot_statistics: bool = False,
 ) -> pd.DataFrame:
 	"""Create a simple pandas DataFrame table from a DataTree.
 	
@@ -142,6 +143,7 @@ def simple_table(
 		include_non_analysis: If True, keep split/level rows.
 		split_path: If True, split the path into separate hierarchical columns.
 		suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
+		pivot_statistics: If True, pivot statistics into columns instead of rows.
 		
 	Returns:
 		A formatted pandas DataFrame.
@@ -166,7 +168,26 @@ def simple_table(
 	# Handle pivot columns if present
 	pivot_columns = []
 
-	if by != "":
+	if by != "" and pivot_statistics:
+		# Pivot by both split variable and statistics
+		pivot_columns = []
+		for lvl in df['pivot_lvl'].unique():
+			for stat in df['statistics'].unique():
+				col_name = f"{lvl} ({stat})"
+				pivot_columns.append(col_name)
+		
+		# Create combined pivot column
+		df['_pivot_stat'] = df['pivot_lvl'] + ' (' + df['statistics'] + ')'
+		
+		df = df.pivot_table(
+			index=['depth', 'path_pivot', 'label'],
+			columns='_pivot_stat',
+			values='values',
+			aggfunc='first'
+		).reset_index()
+		
+	elif by != "":
+		# Pivot only by split variable
 		pivot_columns = df['pivot_lvl'].unique().tolist()
 		df = df.pivot_table(
 			index=['depth', 'path_pivot', 'label', 'statistics'],
@@ -175,7 +196,17 @@ def simple_table(
 			aggfunc='first'
 		).reset_index()
 
+	elif pivot_statistics:
+		# Pivot only by statistics
+		pivot_columns = df['statistics'].unique().tolist()
+		df = df.pivot_table(
+			index=['depth', 'path_pivot', 'label'],
+			columns='statistics',
+			values='values',
+			aggfunc='first'
+		).reset_index()
 	else:
+		# No pivoting
 		pivot_columns = ["values"]
 
 	# Revert joining of path_pivot back to list
@@ -185,9 +216,22 @@ def simple_table(
 	
 	df = df.drop(columns=['path_pivot'])
 	# reorder columns to have levels first
-	display_cols = list(pivot_level_cols) + ['statistics'] + pivot_columns
+	if pivot_statistics and by == "":
+		# When only pivoting statistics, don't include 'statistics' column
+		display_cols = list(pivot_level_cols) + pivot_columns
+	elif pivot_statistics and by != "":
+		# When pivoting both, don't include 'statistics' column
+		display_cols = list(pivot_level_cols) + pivot_columns
+	else:
+		display_cols = list(pivot_level_cols) + ['statistics'] + pivot_columns
+	
 	display_df = df[display_cols].copy()
-	display_df = display_df.rename(columns={'statistics': 'Statistic', 'values': 'Value'})
+	
+	# Rename columns
+	if not pivot_statistics or by != "":
+		display_df = display_df.rename(columns={'statistics': 'Statistic', 'values': 'Value'})
+	else:
+		display_df = display_df.rename(columns={'values': 'Value'})
 
 	# Remove rows where all level columns are None
 	remaining_level_cols = [c for c in display_df.columns if c.startswith('_Level_')]
@@ -214,6 +258,7 @@ def gt_table(
 	include_non_analysis: bool = False,
 	split_path: bool = True,
 	suppress_duplicates: bool = True,
+	pivot_statistics: bool = False,
 	title: Optional[str] = "Analysis Summary",
 	subtitle: Optional[str] = None,
 	decimals: int = 3,
@@ -234,6 +279,9 @@ def gt_table(
 			rows of type 'analysis' are shown.
 		split_path: If True, split the path into separate hierarchical columns.
 		suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
+		pivot_statistics: If True, pivot statistics into columns instead of rows.
+			Compatible with the `by` argument - when both are used, creates
+			combined columns like "GroupName (statistic)".
 		title: Optional table title.
 		subtitle: Optional table subtitle.
 		decimals: Number of decimals for numeric formatting.
@@ -255,6 +303,7 @@ def gt_table(
     
 	display_df = simple_table(
 		dtree,
+		pivot_statistics=pivot_statistics,
 		by=by,
 		include_non_analysis=include_non_analysis,
 		split_path=split_path,
@@ -284,6 +333,29 @@ def gt_table(
 	if len(remaining_level_cols) > 1:
 		try:
 			tbl = tbl.tab_spanner(label="Hierarchy", columns=remaining_level_cols)
+		except Exception:
+			pass
+	
+	# Add spanners for pivot groups when using pivot_statistics with by
+	if pivot_statistics and by != "":
+		try:
+			# Identify columns with the pattern "GroupName (statistic)"
+			pivot_cols = [col for col in display_df.columns if '(' in str(col) and ')' in str(col)]
+			
+			if pivot_cols:
+				# Extract unique group names
+				group_dict = {}
+				for col in pivot_cols:
+					# Extract group name before the parenthesis
+					group_name = col.split(' (')[0]
+					if group_name not in group_dict:
+						group_dict[group_name] = []
+					group_dict[group_name].append(col)
+				
+				# Add a spanner for each group
+				for group_name, cols in group_dict.items():
+					if len(cols) > 0:
+						tbl = tbl.tab_spanner(label=group_name, columns=cols)
 		except Exception:
 			pass
 	
