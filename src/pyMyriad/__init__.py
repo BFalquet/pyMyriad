@@ -5,6 +5,7 @@ from .analysis_tree import *
 from .data_tree import *
 from .plots import forest_plot, distribution_plot
 from .listing import gt_table, simple_table
+from .tabular import format_statistics
 
 __all__ = [
     "AnalysisTree", 
@@ -17,5 +18,6 @@ __all__ = [
     "forest_plot",
     "distribution_plot",
     "gt_table",
-    "simple_table"
+    "simple_table",
+    "format_statistics"
 ]

@@ -1,4 +1,4 @@
-from .data_tree import DataNode, SplitDataNode, DataTree
+from .data_tree import DataNode, SplitDataNode, LvlDataNode, DataTree
 import pandas as pd
 
 def tabulate(dtree: DataTree, unnest: bool = False, pivot: str = ()) -> pd.DataFrame:
@@ -139,3 +139,113 @@ def flatten_data(dtree: DataTree, unnest: bool = False, by: str = ()) -> pd.Data
     flat_df = dtree.__flatten__(pivot = by, data = True).reset_index(drop = True)
 
     return flat_df
+
+
+def format_statistics(dtree: DataTree, label=None, remove_original: bool = False, inplace: bool = False, safe: bool = False, **kwargs):
+    """Formats statistics in DataNode objects according to format specifications.
+    
+    This function creates new formatted statistics by combining existing statistics
+    according to format strings. By default, returns a modified copy of the tree.
+    
+    Args:
+        dtree (DataTree): The DataTree to format.
+        label (str, optional): If specified, only applies formatting to DataNodes with this label.
+            If None (default), applies formatting to all DataNodes.
+        remove_original (bool, optional): If True, removes the original statistics
+            that were used in the format strings, keeping only the formatted results.
+            Defaults to False.
+        inplace (bool, optional): If True, modifies the DataTree in place. If False,
+            creates and returns a modified copy, leaving the original unchanged.
+            Defaults to False.
+        safe (bool, optional): If True, raises an error when formatting fails. If False,
+            silently skips nodes where formatting fails and prints a warning message.
+            Defaults to False.
+        **kwargs: Keyword arguments where keys are the new statistic names and values
+            are format strings. Example: mean_sd="{m} +/- {sd}"
+    
+    Returns:
+        DataTree: The modified DataTree. If inplace=True, returns the same object.
+            If inplace=False, returns a new modified copy.
+    
+    Raises:
+        ValueError: If no format specifications are provided in kwargs.
+        KeyError: If safe=True and a format string references a statistic that doesn't exist.
+    
+    Examples:
+        # Apply format to all nodes
+        dtree = DataTree(
+            a = DataNode(label="Mean", summary={"m": 10.5, "sd": 2.3}),
+            b = DataNode(label="Median", summary={"m": 12.0, "sd": 3.1})
+        )
+        new_dtree = format_statistics(dtree, mean_sd="{m} +/- {sd}")
+        # Both nodes get the "mean_sd" statistic
+        
+        # Apply format only to specific label
+        new_dtree = format_statistics(dtree, label="Mean", result="{m} ± {sd}")
+        # Only the node with label="Mean" gets the "result" statistic
+        
+        # Multiple formats applied to all nodes
+        new_dtree = format_statistics(
+            dtree,
+            mean_sd="{m:.1f} +/- {sd:.1f}",
+            mean_only="{m:.2f}",
+            inplace=True
+        )
+        
+        # Remove original statistics after formatting
+        new_dtree = format_statistics(
+            dtree,
+            formatted="{m} +/- {sd}",
+            remove_original=True
+        )
+    """
+    
+    if not kwargs:
+        raise ValueError("At least one format specification must be provided as a keyword argument")
+    
+    # Create a deep copy if not modifying in place
+    if not inplace:
+        import copy
+        dtree = copy.deepcopy(dtree)
+    
+    def _apply_format_to_node(node):
+        """Recursively apply formatting to DataNode objects."""
+        if isinstance(node, DataNode):
+            if node.summary is not None:
+                # Check if we should apply formatting to this node
+                if label is None or node.label == label:
+                    # Apply each format specification
+                    for stat_name, format_string in kwargs.items():
+                        try:
+                            formatted_value = format_string.format(**node.summary)
+                            
+                            if remove_original:
+                                # Extract the keys used in this format string
+                                import re
+                                # Find all {key} or {key:format} patterns
+                                pattern = r'\{([^}:]+)(?::[^}]*)?\}'
+                                keys_used = set(re.findall(pattern, format_string))
+                                
+                                # Remove the used keys from summary
+                                for key in keys_used:
+                                    node.summary.pop(key, None)
+                            
+                            # Add the formatted statistic
+                            node.summary[stat_name] = formatted_value
+                            
+                        except KeyError as e:
+                            if safe:
+                                raise KeyError(f"Format string for '{stat_name}' references non-existent statistic {e} in node '{node.label}'. Available statistics: {list(node.summary.keys())}")
+                            else:
+                                print(f"Warning: Format string for '{stat_name}' references non-existent statistic {e} in node '{node.label}'. Available statistics: {list(node.summary.keys())}. Skipping this node.")
+        
+        elif isinstance(node, (SplitDataNode, dict)):
+            # Recursively process child nodes
+            for child in node.values():
+                _apply_format_to_node(child)
+    
+    # Apply formatting to all nodes in the tree
+    for node in dtree.values():
+        _apply_format_to_node(node)
+    
+    return dtree
