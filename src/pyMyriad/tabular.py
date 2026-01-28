@@ -141,7 +141,7 @@ def flatten_data(dtree: DataTree, unnest: bool = False, by: str = ()) -> pd.Data
     return flat_df
 
 
-def format_statistics(dtree: DataTree, label=None, remove_original: bool = False, inplace: bool = False, **kwargs):
+def format_statistics(dtree: DataTree, label=None, remove_original: bool = False, inplace: bool = False, safe: bool = False, **kwargs):
     """Formats statistics in DataNode objects according to format specifications.
     
     This function creates new formatted statistics by combining existing statistics
@@ -157,6 +157,9 @@ def format_statistics(dtree: DataTree, label=None, remove_original: bool = False
         inplace (bool, optional): If True, modifies the DataTree in place. If False,
             creates and returns a modified copy, leaving the original unchanged.
             Defaults to False.
+        safe (bool, optional): If True, raises an error when formatting fails. If False,
+            silently skips nodes where formatting fails and prints a warning message.
+            Defaults to False.
         **kwargs: Keyword arguments where keys are the new statistic names and values
             are format strings. Example: mean_sd="{m} +/- {sd}"
     
@@ -166,7 +169,7 @@ def format_statistics(dtree: DataTree, label=None, remove_original: bool = False
     
     Raises:
         ValueError: If no format specifications are provided in kwargs.
-        KeyError: If a format string references a statistic that doesn't exist.
+        KeyError: If safe=True and a format string references a statistic that doesn't exist.
     
     Examples:
         # Apply format to all nodes
@@ -231,7 +234,10 @@ def format_statistics(dtree: DataTree, label=None, remove_original: bool = False
                             node.summary[stat_name] = formatted_value
                             
                         except KeyError as e:
-                            raise KeyError(f"Format string for '{stat_name}' references non-existent statistic {e} in node '{node.label}'. Available statistics: {list(node.summary.keys())}")
+                            if safe:
+                                raise KeyError(f"Format string for '{stat_name}' references non-existent statistic {e} in node '{node.label}'. Available statistics: {list(node.summary.keys())}")
+                            else:
+                                print(f"Warning: Format string for '{stat_name}' references non-existent statistic {e} in node '{node.label}'. Available statistics: {list(node.summary.keys())}. Skipping this node.")
         
         elif isinstance(node, (SplitDataNode, dict)):
             # Recursively process child nodes

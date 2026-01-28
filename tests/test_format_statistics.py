@@ -103,13 +103,13 @@ def test_format_statistics_no_kwargs_error():
 
 
 def test_format_statistics_missing_stat_error():
-    """Test that error is raised when format references non-existent statistic."""
+    """Test that error is raised when format references non-existent statistic with safe=True."""
     dtree = DataTree(
         a = DataNode(label="Mean", summary={"m": 10.5})
     )
     
     with pytest.raises(KeyError, match="non-existent statistic"):
-        format_statistics(dtree, result="{m} +/- {sd}", inplace=True)
+        format_statistics(dtree, result="{m} +/- {sd}", safe=True, inplace=True)
 
 
 def test_format_statistics_numeric_formatting():
@@ -276,3 +276,62 @@ def test_format_statistics_multiple_rounds_with_removal():
     
     # Only 'full' and 'n' should remain
     assert set(dtree["a"].summary.keys()) == {"full", "n"}
+
+
+def test_format_statistics_safe_false_default(capsys):
+    """Test that safe=False (default) prints warning and skips node when formatting fails."""
+    dtree = DataTree(
+        a = DataNode(label="Mean", summary={"m": 10.5}),
+        b = DataNode(label="Complete", summary={"m": 12.0, "sd": 3.1})
+    )
+    
+    # Default safe=False should not raise error
+    format_statistics(dtree, result="{m} +/- {sd}", inplace=True)
+    
+    # Check that warning was printed
+    captured = capsys.readouterr()
+    assert "Warning" in captured.out
+    assert "'sd'" in captured.out
+    assert "Mean" in captured.out
+    
+    # Node with missing statistic should not have the result
+    assert "result" not in dtree["a"].summary
+    # Original statistics should still be there
+    assert dtree["a"].summary["m"] == 10.5
+    
+    # Node with complete statistics should have the result
+    assert dtree["b"].summary["result"] == "12.0 +/- 3.1"
+
+
+def test_format_statistics_safe_true():
+    """Test that safe=True raises error when formatting fails."""
+    dtree = DataTree(
+        a = DataNode(label="Mean", summary={"m": 10.5})
+    )
+    
+    # safe=True should raise KeyError
+    with pytest.raises(KeyError, match="non-existent statistic"):
+        format_statistics(dtree, result="{m} +/- {sd}", safe=True, inplace=True)
+
+
+def test_format_statistics_safe_false_mixed_nodes(capsys):
+    """Test safe=False with multiple nodes, some failing and some succeeding."""
+    dtree = DataTree(
+        a = DataNode(label="Incomplete1", summary={"m": 10.5}),
+        b = DataNode(label="Complete", summary={"m": 12.0, "sd": 3.1}),
+        c = DataNode(label="Incomplete2", summary={"m": 8.2, "n": 50})
+    )
+    
+    format_statistics(dtree, result="{m} +/- {sd}", inplace=True)
+    
+    # Check warnings for both incomplete nodes
+    captured = capsys.readouterr()
+    assert captured.out.count("Warning") == 2
+    
+    # Incomplete nodes should not have the result
+    assert "result" not in dtree["a"].summary
+    assert "result" not in dtree["c"].summary
+    
+    # Complete node should have the result
+    assert dtree["b"].summary["result"] == "12.0 +/- 3.1"
+
