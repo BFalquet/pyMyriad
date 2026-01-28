@@ -1,13 +1,13 @@
 from pyMyriad import *
 import pytest
 
-def test_format_statistics_global():
-    """Test global format specification."""
+def test_format_statistics_basic():
+    """Test basic formatting with kwargs."""
     dtree = DataTree(
         a = DataNode(label="Mean", summary={"m": 10.5, "sd": 2.3})
     )
     
-    result = format_statistics(dtree, format_spec="{m} +/- {sd}", stat_name="result", inplace=True)
+    result = format_statistics(dtree, result="{m} +/- {sd}", inplace=True)
     
     assert result is dtree  # Should return same object when inplace=True
     assert "result" in dtree["a"].summary
@@ -17,22 +17,54 @@ def test_format_statistics_global():
     assert dtree["a"].summary["sd"] == 2.3
 
 
-def test_format_statistics_per_label():
-    """Test format specification per label."""
+def test_format_statistics_multiple_formats():
+    """Test multiple format specifications at once."""
     dtree = DataTree(
-        mean_node = DataNode(label="Mean", summary={"m": 10.5, "sd": 2.3}),
-        median_node = DataNode(label="Median", summary={"median": 11, "q1": 9, "q3": 13})
+        a = DataNode(label="Stats", summary={"m": 10.5, "sd": 2.3, "n": 100})
     )
     
     format_statistics(
-        dtree, 
-        format_map={"Mean": "{m} +/- {sd}", "Median": "{median} [{q1}-{q3}]"},
-        stat_name="summary_text",
+        dtree,
+        mean_sd="{m} +/- {sd}",
+        sample_size="N={n}",
+        mean_only="{m:.2f}",
         inplace=True
     )
     
-    assert dtree["mean_node"].summary["summary_text"] == "10.5 +/- 2.3"
-    assert dtree["median_node"].summary["summary_text"] == "11 [9-13]"
+    assert dtree["a"].summary["mean_sd"] == "10.5 +/- 2.3"
+    assert dtree["a"].summary["sample_size"] == "N=100"
+    assert dtree["a"].summary["mean_only"] == "10.50"
+
+
+def test_format_statistics_label_filter():
+    """Test applying format only to nodes with specific label."""
+    dtree = DataTree(
+        a = DataNode(label="Mean", summary={"m": 10.5, "sd": 2.3}),
+        b = DataNode(label="Median", summary={"m": 12.0, "sd": 3.1})
+    )
+    
+    format_statistics(dtree, label="Mean", result="{m} ± {sd}", inplace=True)
+    
+    # Only node with label="Mean" should have the result
+    assert "result" in dtree["a"].summary
+    assert dtree["a"].summary["result"] == "10.5 ± 2.3"
+    
+    # Node with label="Median" should not have result
+    assert "result" not in dtree["b"].summary
+
+
+def test_format_statistics_all_nodes():
+    """Test applying format to all nodes when label=None."""
+    dtree = DataTree(
+        a = DataNode(label="Mean", summary={"m": 10.5, "sd": 2.3}),
+        b = DataNode(label="Median", summary={"m": 12.0, "sd": 3.1})
+    )
+    
+    format_statistics(dtree, formatted="{m} +/- {sd}", inplace=True)
+    
+    # Both nodes should have the formatted statistic
+    assert dtree["a"].summary["formatted"] == "10.5 +/- 2.3"
+    assert dtree["b"].summary["formatted"] == "12.0 +/- 3.1"
 
 
 def test_format_statistics_nested():
@@ -54,19 +86,19 @@ def test_format_statistics_nested():
         )
     )
     
-    format_statistics(dtree, format_spec="{mean} ± {sd}", stat_name="formatted", inplace=True)
+    format_statistics(dtree, formatted="{mean} ± {sd}", inplace=True)
     
     assert dtree["s"]["lvl1"]["group1"].summary["formatted"] == "10.2 ± 1.5"
     assert dtree["s"]["lvl1"]["group2"].summary["formatted"] == "20.8 ± 3.2"
 
 
-def test_format_statistics_no_format_error():
-    """Test that error is raised when no format is provided."""
+def test_format_statistics_no_kwargs_error():
+    """Test that error is raised when no format specifications are provided."""
     dtree = DataTree(
         a = DataNode(label="Mean", summary={"m": 10.5, "sd": 2.3})
     )
     
-    with pytest.raises(ValueError, match="Either format_spec or format_map must be provided"):
+    with pytest.raises(ValueError, match="At least one format specification must be provided"):
         format_statistics(dtree)
 
 
@@ -77,7 +109,7 @@ def test_format_statistics_missing_stat_error():
     )
     
     with pytest.raises(KeyError, match="non-existent statistic"):
-        format_statistics(dtree, format_spec="{m} +/- {sd}", inplace=True)
+        format_statistics(dtree, result="{m} +/- {sd}", inplace=True)
 
 
 def test_format_statistics_numeric_formatting():
@@ -86,28 +118,9 @@ def test_format_statistics_numeric_formatting():
         a = DataNode(label="Mean", summary={"m": 10.523456, "sd": 2.3789})
     )
     
-    format_statistics(dtree, format_spec="{m:.2f} +/- {sd:.2f}", stat_name="rounded", inplace=True)
+    format_statistics(dtree, rounded="{m:.2f} +/- {sd:.2f}", inplace=True)
     
     assert dtree["a"].summary["rounded"] == "10.52 +/- 2.38"
-
-
-def test_format_statistics_mixed_label_and_global():
-    """Test that label-specific format overrides global format."""
-    dtree = DataTree(
-        node1 = DataNode(label="Special", summary={"m": 10.5, "sd": 2.3}),
-        node2 = DataNode(label="Normal", summary={"m": 15.2, "sd": 1.8})
-    )
-    
-    format_statistics(
-        dtree,
-        format_spec="{m} +/- {sd}",  # Global default
-        format_map={"Special": "{m} (SD={sd})"},  # Override for "Special"
-        stat_name="text",
-        inplace=True
-    )
-    
-    assert dtree["node1"].summary["text"] == "10.5 (SD=2.3)"
-    assert dtree["node2"].summary["text"] == "15.2 +/- 1.8"
 
 
 def test_format_statistics_no_summary():
@@ -117,7 +130,7 @@ def test_format_statistics_no_summary():
         b = DataNode(label="WithStats", summary={"m": 10.5, "sd": 2.3})
     )
     
-    format_statistics(dtree, format_spec="{m} +/- {sd}", stat_name="result", inplace=True)
+    format_statistics(dtree, result="{m} +/- {sd}", inplace=True)
     
     # Node with no summary should be unchanged
     assert dtree["a"].summary is None
@@ -134,7 +147,7 @@ def test_format_statistics_inplace_false():
     original_summary = dtree["a"].summary.copy()
     
     # Format with inplace=False (default)
-    new_dtree = format_statistics(dtree, format_spec="{m} +/- {sd}", stat_name="result")
+    new_dtree = format_statistics(dtree, result="{m} +/- {sd}")
     
     # Original should be unchanged
     assert dtree["a"].summary == original_summary
@@ -155,7 +168,7 @@ def test_format_statistics_inplace_true():
     )
     
     # Format with inplace=True
-    result = format_statistics(dtree, format_spec="{m} +/- {sd}", stat_name="result", inplace=True)
+    result = format_statistics(dtree, result="{m} +/- {sd}", inplace=True)
     
     # Should return the same object
     assert result is dtree
@@ -171,7 +184,7 @@ def test_format_statistics_remove_original():
         a = DataNode(label="Mean", summary={"m": 10.5, "sd": 2.3, "n": 100})
     )
     
-    format_statistics(dtree, format_spec="{m} +/- {sd}", stat_name="result", remove_original=True, inplace=True)
+    format_statistics(dtree, result="{m} +/- {sd}", remove_original=True, inplace=True)
     
     # Original statistics used in format should be removed
     assert "m" not in dtree["a"].summary
@@ -182,22 +195,31 @@ def test_format_statistics_remove_original():
     assert dtree["a"].summary["result"] == "10.5 +/- 2.3"
 
 
-def test_format_statistics_remove_original_with_format_spec():
-    """Test that only statistics used in format string are removed."""
+def test_format_statistics_remove_original_multiple_formats():
+    """Test that only statistics used in each format string are removed."""
     dtree = DataTree(
         a = DataNode(label="Stats", summary={"mean": 45.2, "sd": 8.7, "median": 44.5, "n": 150})
     )
     
-    format_statistics(dtree, format_spec="{mean:.1f} ± {sd:.1f}", stat_name="formatted", remove_original=True, inplace=True)
+    format_statistics(
+        dtree,
+        formatted="{mean:.1f} ± {sd:.1f}",
+        sample_size="N={n}",
+        remove_original=True,
+        inplace=True
+    )
     
     # Used statistics should be removed
     assert "mean" not in dtree["a"].summary
     assert "sd" not in dtree["a"].summary
+    assert "n" not in dtree["a"].summary  # Used in sample_size format
+    
     # Unused statistics should be preserved
     assert dtree["a"].summary["median"] == 44.5
-    assert dtree["a"].summary["n"] == 150
-    # Formatted result should be present
+    
+    # Formatted results should be present
     assert dtree["a"].summary["formatted"] == "45.2 ± 8.7"
+    assert dtree["a"].summary["sample_size"] == "N=150"
 
 
 def test_format_statistics_multiple_rounds():
@@ -207,15 +229,15 @@ def test_format_statistics_multiple_rounds():
     )
     
     # First round: create mean_sd
-    format_statistics(dtree, format_spec="{m} +/- {sd}", stat_name="mean_sd", inplace=True)
+    format_statistics(dtree, mean_sd="{m} +/- {sd}", inplace=True)
     assert dtree["a"].summary["mean_sd"] == "10.5 +/- 2.3"
     
     # Second round: create ci_range
-    format_statistics(dtree, format_spec="({ci_lower}, {ci_upper})", stat_name="ci_range", inplace=True)
+    format_statistics(dtree, ci_range="({ci_lower}, {ci_upper})", inplace=True)
     assert dtree["a"].summary["ci_range"] == "(9.8, 11.2)"
     
     # Third round: combine both
-    format_statistics(dtree, format_spec="{mean_sd}, CI: {ci_range}", stat_name="full", inplace=True)
+    format_statistics(dtree, full="{mean_sd}, CI: {ci_range}", inplace=True)
     assert dtree["a"].summary["full"] == "10.5 +/- 2.3, CI: (9.8, 11.2)"
     
     # All intermediate statistics should still be present
@@ -232,19 +254,19 @@ def test_format_statistics_multiple_rounds_with_removal():
     )
     
     # First round: create mean_sd, remove originals
-    format_statistics(dtree, format_spec="{m} +/- {sd}", stat_name="mean_sd", remove_original=True, inplace=True)
+    format_statistics(dtree, mean_sd="{m} +/- {sd}", remove_original=True, inplace=True)
     assert "m" not in dtree["a"].summary
     assert "sd" not in dtree["a"].summary
     assert dtree["a"].summary["mean_sd"] == "10.5 +/- 2.3"
     
     # Second round: create ci_range, remove originals
-    format_statistics(dtree, format_spec="({ci_lower}, {ci_upper})", stat_name="ci_range", remove_original=True, inplace=True)
+    format_statistics(dtree, ci_range="({ci_lower}, {ci_upper})", remove_original=True, inplace=True)
     assert "ci_lower" not in dtree["a"].summary
     assert "ci_upper" not in dtree["a"].summary
     assert dtree["a"].summary["ci_range"] == "(9.8, 11.2)"
     
     # Third round: combine both, remove intermediates
-    format_statistics(dtree, format_spec="{mean_sd}, CI: {ci_range}", stat_name="full", remove_original=True, inplace=True)
+    format_statistics(dtree, full="{mean_sd}, CI: {ci_range}", remove_original=True, inplace=True)
     assert "mean_sd" not in dtree["a"].summary
     assert "ci_range" not in dtree["a"].summary
     assert dtree["a"].summary["full"] == "10.5 +/- 2.3, CI: (9.8, 11.2)"
