@@ -8,7 +8,7 @@ from pyMyriad.analysis_tree import AnalysisTree, SplitNode, AnalysisNode
 def test_analysis_tree_initialization_empty():
     tree = AnalysisTree()
     assert isinstance(tree, AnalysisTree)
-    assert tree.date == "Today"
+    assert isinstance(tree.att, tuple)
     assert list(tree) == []
 
 def test_analysis_tree_str_output():
@@ -210,3 +210,116 @@ def test_scope_eval_function_compatibility():
     assert 'func_mean' in result_mixed
     assert 'str_count' in result_mixed
     assert result_mixed['str_count'] == 20
+
+
+# CrossAnalysisNode tests
+
+def test_cross_analysis_node_initialization():
+    """Test CrossAnalysisNode initialization"""
+    from pyMyriad.analysis_tree import CrossAnalysisNode
+    
+    node = CrossAnalysisNode(
+        mean_diff="np.mean(df.A) - np.mean(ref_df.A)",
+        ref_lvl="reference"
+    )
+    assert node.label == ""
+    assert node.ref_lvl == "reference"
+    assert node.termination
+    assert "mean_diff" in node.analysis
+
+
+def test_cross_analyze_by_with_ref_level():
+    """Test cross_analyze_by with a specified reference level"""
+    np.random.seed(42)
+    df = pd.DataFrame({
+        'A': [10, 20, 30, 40, 50, 60],
+        'B': [1, 1, 2, 2, 3, 3],  # Groups: 1, 2, 3
+    })
+    
+    tree = (AnalysisTree()
+           .split_by("df.B")
+           .cross_analyze_by(
+               ref_lvl="1",
+               mean_diff="np.mean(df.A) - np.mean(ref_df.A)"
+           ))
+    
+    environ = {'np': np}
+    result = tree.run(df, environ=environ)
+    
+    # The result is a DataTree; check string representation for cross-analysis labels
+    result_str = str(result)
+    assert "2_vs_1" in result_str
+    assert "3_vs_1" in result_str
+    # The mean_diff for group 2 vs 1 should be 20 (35 - 15)
+    assert "20.0" in result_str
+
+
+def test_cross_analyze_by_pairwise():
+    """Test cross_analyze_by without ref_lvl (pairwise comparisons)"""
+    np.random.seed(42)
+    df = pd.DataFrame({
+        'A': [10, 20, 30, 40, 50, 60],
+        'B': [1, 1, 2, 2, 3, 3],  # Groups: 1, 2, 3
+    })
+    
+    tree = (AnalysisTree()
+           .split_by("df.B")
+           .cross_analyze_by(
+               mean_diff="np.mean(df.A) - np.mean(ref_df.A)"
+           ))
+    
+    environ = {'np': np}
+    result = tree.run(df, environ=environ)
+    
+    # Should have pairwise comparisons: 2_vs_1, 3_vs_1, 3_vs_2
+    result_str = str(result)
+    # At minimum, some cross comparisons should exist
+    assert "_vs_" in result_str
+
+
+def test_cross_analyze_by_invalid_ref_level():
+    """Test cross_analyze_by raises KeyError with invalid ref_lvl"""
+    df = pd.DataFrame({
+        'A': [10, 20, 30, 40],
+        'B': [1, 1, 2, 2],
+    })
+    
+    tree = (AnalysisTree()
+           .split_by("df.B")
+           .cross_analyze_by(
+               ref_lvl="nonexistent",
+               mean_diff="np.mean(df.A) - np.mean(ref_df.A)"
+           ))
+    
+    environ = {'np': np}
+    with pytest.raises(KeyError, match="Reference level 'nonexistent' not found"):
+        tree.run(df, environ=environ)
+
+
+def test_scope_cross_eval():
+    """Test scope_cross_eval function"""
+    from pyMyriad.utils import scope_cross_eval
+    
+    df = pd.DataFrame({'A': [10, 20, 30]})
+    ref_df = pd.DataFrame({'A': [5, 10, 15]})
+    
+    # Test string expression
+    result = scope_cross_eval(
+        df=df,
+        ref_df=ref_df,
+        extra_context={'np': np},
+        mean_diff="np.mean(df.A) - np.mean(ref_df.A)"
+    )
+    
+    assert 'mean_diff' in result
+    assert result['mean_diff'] == 10.0  # (20) - (10) = 10
+    
+    # Test function
+    result_func = scope_cross_eval(
+        df=df,
+        ref_df=ref_df,
+        sum_diff=lambda df, ref_df: df.A.sum() - ref_df.A.sum()
+    )
+    
+    assert 'sum_diff' in result_func
+    assert result_func['sum_diff'] == 30  # (60) - (30) = 30

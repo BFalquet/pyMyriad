@@ -103,3 +103,51 @@ def count_or_length(data: pd.DataFrame, id: str) -> int:
         return len(data)
     else:
         return data[id].nunique()
+
+def scope_cross_eval(df: pd.DataFrame = None, ref_df:pd.DataFrame = None, extra_context: dict = None, **kwargs):
+    """
+    Evaluate expressions or execute functions comparing two DataFrames (df and ref_df).
+    This function allows you to evaluate expressions or execute functions for cross-analysis,
+    where both `df` and `ref_df` are available as variables.
+    Args:
+        df (pd.DataFrame, optional): The primary DataFrame to analyze. Defaults to None.
+        ref_df (pd.DataFrame, optional): The reference DataFrame for comparison. Defaults to None.
+        extra_context (dict, optional): Additional context to include in the evaluation. Defaults to None.
+        **kwargs: Expressions to evaluate or functions to execute, where keys are variable names and values are either:
+                 - strings (expressions to evaluate, with `df` and `ref_df` available)
+                 - callable functions that take two arguments: (df, ref_df)
+    Returns:
+        dict: A dictionary with keys as the names of the evaluated expressions/functions and values as the results.
+    Examples:
+        # String expressions comparing two DataFrames
+        scope_cross_eval(df=df, ref_df=ref_df, mean_diff="np.mean(df.A) - np.mean(ref_df.A)")
+        
+        # Function expressions (must accept two arguments: df and ref_df)
+        scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A))
+        
+        # Mixed usage
+        scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: df.A.mean() - ref_df.A.mean(), count="len(df)")
+
+    Notes:
+        - For string expressions, both `df` and `ref_df` are available as variables.
+        - For functions, they must accept two arguments: (df, ref_df).
+        - The function uses `eval` for strings, so be cautious about evaluating untrusted input.
+    """
+
+    assert len(kwargs) > 0, "At least one expression or function must be provided."
+
+    ctx = {}
+    if extra_context is not None:
+        ctx.update(extra_context)
+
+    # Evaluate each expression/function
+    results = {}
+    for name, expr_or_func in kwargs.items():
+        if callable(expr_or_func):
+            # Execute function with DataFrame as argument
+            results[name] = expr_or_func(df, ref_df)
+        else:
+            # Treat as string expression (original behavior)
+            results[name] = eval(expr_or_func, ctx, {"df": df, "ref_df": ref_df})
+
+    return results

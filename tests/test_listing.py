@@ -23,16 +23,17 @@ def test_split_path_into_levels():
 		'value': [1, 2]
 	})
 	
-	result = _split_path_into_levels(df, path_col='path')
+	result, level_cols = _split_path_into_levels(df, path_col='path')
 	
-	assert 'Level_0' in result.columns
-	assert 'Level_1' in result.columns
-	assert 'Level_2' in result.columns
-	assert result.loc[0, 'Level_0'] == 'Gender'
-	assert result.loc[0, 'Level_1'] == 'M'
-	assert result.loc[1, 'Level_0'] == 'Gender'
-	assert result.loc[1, 'Level_1'] == 'F'
-	assert result.loc[1, 'Level_2'] == 'Country'
+	assert '_Level_0' in result.columns
+	assert '_Level_1' in result.columns
+	assert '_Level_2' in result.columns
+	assert result.loc[0, '_Level_0'] == 'Gender'
+	assert result.loc[0, '_Level_1'] == 'M'
+	assert result.loc[1, '_Level_0'] == 'Gender'
+	assert result.loc[1, '_Level_1'] == 'F'
+	assert result.loc[1, '_Level_2'] == 'Country'
+	assert level_cols == ['_Level_0', '_Level_1', '_Level_2', '_Level_3']
 
 
 def test_simple_table_basic():
@@ -56,9 +57,9 @@ def test_simple_table_basic():
 	result = simple_table(dtree)
 	
 	# Check that we have the expected columns
-	assert 'Level_0' in result.columns
-	assert 'Level_1' in result.columns
-	assert 'Level_2' in result.columns
+	assert '_Level_0' in result.columns
+	assert '_Level_1' in result.columns
+	assert '_Level_2' in result.columns
 	assert 'Analysis' in result.columns
 	assert 'Statistic' in result.columns
 	assert 'Value' in result.columns
