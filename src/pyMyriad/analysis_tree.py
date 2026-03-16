@@ -1,5 +1,4 @@
 
-from cProfile import label
 import sys
 import inspect
 import ast
@@ -142,7 +141,7 @@ class AnalysisTree(list):
         return self
     
     def analyze_by(self, *args, label: str = str(), termination: bool = True, **kwargs):
-        """Add an analyis node at the extremites of the branches.
+        """Add an analysis node at the extremites of the branches.
         
         Args:
             *args: Additional positional arguments representing analysis expressions.
@@ -192,7 +191,7 @@ class AnalysisTree(list):
         return self
     
     def cross_analyze_by(self, *args, label: str = str(), ref_lvl: str = str(), termination: bool = True, **kwargs):
-        """Add a cross-analyis node at the extremites of the branches.
+        """Add a cross-analysis node at the extremites of the branches.
         Args:
             *args: Additional positional arguments representing analysis expressions.
             label (str, optional): The label for the analysis node. Defaults to an empty string.
@@ -205,7 +204,7 @@ class AnalysisTree(list):
         Examples:
             a_tree = AnalysisTree()
             a_tree.split_by(m = "df.A > 50")
-            a_tree = a_tree.cross_analyze_by(m = "np.mean(df.A) - np.mean(df_ref.A)", s = "np.median(df.B) - np.median(df_ref.B)")
+            a_tree = a_tree.cross_analyze_by(m = "np.mean(df.A) - np.mean(ref_df.A)", s = "np.median(df.B) - np.median(ref_df.B)")
         """
 
         for i in range(len(self)):
@@ -321,32 +320,36 @@ class SplitNode(list):
         res_dic = {str(n): LvlDataNode(split_lvl = str(n), _N = count_or_length(data, id), **{(str(element.label) or str(nn)): element.run(data, environ = environ, id = id, _N = None) for nn, element in not_cross_analysis_node.items()}) for n, data in split_dfs.items()}
 
         # Handle CrossAnalysisNode separately
-        if (len(cross_analysis_node) > 0) & (len(split_dfs) > 1):
-            for n, data in split_dfs.items():
-                for nn, element in cross_analysis_node.items():
-                    # Create pairwise combinations to reference levels by selectin data frames from split_dfs
-                    ref_lvl = element.ref_lvl
+        if (len(cross_analysis_node) > 0) and (len(split_dfs) > 1):
+            for nn, element in cross_analysis_node.items():
+                # Create pairwise combinations to reference levels by selecting data frames from split_dfs
+                ref_lvl = element.ref_lvl
 
-                    # If a reference level is specified, compare every level to the reference level.
-                    if len(ref_lvl) > 0:
-                        non_ref_lvls = set(split_dfs.keys()) - {ref_lvl}
-                        for variable_df_key in non_ref_lvls:
-                            if ref_lvl != n:
-                                cross_data = { "df": data, "ref_df": split_dfs[ref_lvl] }
-                                cross_label = f"{n}_vs_{ref_lvl}"
-                                res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = count_or_length(data, id), **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, id = id, _N = None) for nn, element in cross_analysis_node.items()})
+                # If a reference level is specified, compare every level to the reference level.
+                if len(ref_lvl) > 0:
+                    # Validate that the reference level exists
+                    if ref_lvl not in split_dfs:
+                        raise KeyError(f"Reference level '{ref_lvl}' not found in split levels: {list(split_dfs.keys())}")
                     
-                    # If no reference level is specified, compare every level with each other.
-                    else:
-                        df_keys = list(split_dfs.keys())
-                        for ref_lvl_i in range(len(split_dfs) - 1):
-                            ref_df = split_dfs[df_keys[ref_lvl_i]]
-                            for var_lvl_i in range(ref_lvl_i, len(split_dfs)):
-                                var_df = split_dfs[df_keys[var_lvl_i]]
-                                cross_data = { "df": data, "ref_df": var_df }
-                                cross_label = f"{df_keys[var_lvl_i]}_vs_{df_keys[ref_lvl_i]}"
-                                res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = count_or_length(data, id), **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, id = id, _N = None) for nn, element in cross_analysis_node.items()})
-            
+                    ref_df = split_dfs[ref_lvl]
+                    non_ref_lvls = set(split_dfs.keys()) - {ref_lvl}
+                    
+                    for var_lvl in non_ref_lvls:
+                        var_df = split_dfs[var_lvl]
+                        cross_data = { "df": var_df, "ref_df": ref_df }
+                        cross_label = f"{var_lvl}_vs_{ref_lvl}"
+                        res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = count_or_length(var_df, id), **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, id = id, _N = None) for nn, element in cross_analysis_node.items()})
+                
+                # If no reference level is specified, compare every level with each other.
+                else:
+                    df_keys = list(split_dfs.keys())
+                    for ref_lvl_i in range(len(df_keys) - 1):
+                        ref_df = split_dfs[df_keys[ref_lvl_i]]
+                        for var_lvl_i in range(ref_lvl_i + 1, len(df_keys)):
+                            var_df = split_dfs[df_keys[var_lvl_i]]
+                            cross_data = { "df": var_df, "ref_df": ref_df }
+                            cross_label = f"{df_keys[var_lvl_i]}_vs_{df_keys[ref_lvl_i]}"
+                            res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = count_or_length(var_df, id), **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, id = id, _N = None) for nn, element in cross_analysis_node.items()})
 
 
         split_var = self.expr or "::".join(self.kwexpr.keys())
@@ -411,7 +414,7 @@ class SplitNode(list):
         return self
     
     def analyze_by(self, *args, label: str = str(), termination: bool = True, **kwargs):
-        """Add an analyis node at the extremites of the branches.
+        """Add an analysis node at the extremites of the branches.
         
         Args:
             *args: Additional positional arguments representing analysis expressions.
@@ -462,7 +465,7 @@ class SplitNode(list):
         return self
     
     def cross_analyze_by(self, *args, label: str = str(), ref_lvl: str = str(), termination: bool = True, **kwargs):
-        """Add a cross-analyis node at the extremites of the branches.
+        """Add a cross-analysis node at the extremites of the branches.
         Args:
             *args: Additional positional arguments representing analysis expressions.
             label (str, optional): The label for the analysis node. Defaults to an empty string.
@@ -475,7 +478,7 @@ class SplitNode(list):
         Examples:
             a_tree = AnalysisTree()
             a_tree.split_by(m = "df.A > 50")
-            a_tree = a_tree.cross_analysis_by(m = "np.mean(df.A) - np.mean(df_ref.A)", s = "np.median(df.B) - np.median(df_ref.B)")
+            a_tree = a_tree.cross_analyze_by(m = "np.mean(df.A) - np.mean(ref_df.A)", s = "np.median(df.B) - np.median(ref_df.B)")
         """
         is_split_node = [isinstance(x, SplitNode) for x in self]
         # length 0 OR (no split node and no termination signal)
@@ -521,7 +524,7 @@ class AnalysisNode():
         """
 
         analysis = {k: k for k in args} | kwargs
-        assert len(analysis) > 0, "At least one analyis must be provided"
+        assert len(analysis) > 0, "At least one analysis must be provided"
 
         self.analysis = analysis
          
@@ -590,7 +593,7 @@ class CrossAnalysisNode(list):
         """
 
         analysis = {k: k for k in args} | kwargs
-        assert len(analysis) > 0, "At least one analyis must be provided"
+        assert len(analysis) > 0, "At least one analysis must be provided"
 
         super().__init__(args)
 
