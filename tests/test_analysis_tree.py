@@ -8,7 +8,7 @@ from pyMyriad.analysis_tree import AnalysisTree, SplitNode, AnalysisNode
 def test_analysis_tree_initialization_empty():
     tree = AnalysisTree()
     assert isinstance(tree, AnalysisTree)
-    assert tree.date == "Today"
+    assert isinstance(tree.att, tuple)
     assert list(tree) == []
 
 def test_analysis_tree_str_output():

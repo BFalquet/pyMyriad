@@ -57,6 +57,6 @@ def test_run_eval_in_split():
         res = a_tree.run(df, environ = environ)
     assert isinstance(res, DataTree)
     assert len(res) == 2
-    assert list(res.keys()) == ["gp1::gp2", "Custom"]
-    assert len(res["gp1::gp2"]) == 2
+    assert list(res.keys()) == ["gp1-gp2", "Custom"]
+    assert len(res["gp1-gp2"]) == 2
     assert len(res["Custom"].summary) == 2
