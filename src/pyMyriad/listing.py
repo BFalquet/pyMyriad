@@ -27,11 +27,11 @@ def _split_path_into_levels(df: pd.DataFrame, path_col: str = "path") -> tuple[p
 		path_col: Name of the column containing path lists
 		
 	Returns:
-		DataFrame with additional Level_0, Level_1, Level_2, etc. columns
-		List with the name of the new level columns
+		Tuple of (DataFrame with additional Level_0, Level_1, Level_2, etc. columns,
+		         List with the name of the new level columns)
 	"""
 	if path_col not in df.columns:
-		return df
+		return (df, [])
 	
 	df = df.copy()
 	
@@ -51,7 +51,7 @@ def _split_path_into_levels(df: pd.DataFrame, path_col: str = "path") -> tuple[p
 	max_depth = df['_cleaned_path'].apply(len).max()
 	if pd.isna(max_depth) or max_depth == 0:
 		df = df.drop(columns=['_cleaned_path'])
-		return df
+		return (df, [])
 	
 	# Create level columns
 	for i in range(int(max_depth)):
@@ -128,6 +128,7 @@ def simple_table(
 	by: str = "",
 	*,
 	include_non_analysis: bool = False,
+	include_label: bool = False,
 	split_path: bool = True,
 	suppress_duplicates: bool = True,
 	pivot_statistics: bool = False,
@@ -141,6 +142,7 @@ def simple_table(
 		dtree: The DataTree to tabulate.
 		by: Split variable name(s) to pivot across columns.
 		include_non_analysis: If True, keep split/level rows.
+		include_label: If True, include an 'Analysis' column with the analysis label.
 		split_path: If True, split the path into separate hierarchical columns.
 		suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
 		pivot_statistics: If True, pivot statistics into columns instead of rows.
@@ -223,7 +225,11 @@ def simple_table(
 	# Revert joining of path_pivot back to list
 	df['path_pivot'] = df['path_pivot'].apply(lambda x: x.split(" > ") if isinstance(x, str) else [])
 
-	df, pivot_level_cols = _split_path_into_levels(df, path_col="path_pivot")
+	# Split path into level columns if requested
+	if split_path:
+		df, pivot_level_cols = _split_path_into_levels(df, path_col="path_pivot")
+	else:
+		pivot_level_cols = []
 	
 	df = df.drop(columns=['path_pivot'])
 	# reorder columns to have levels first
@@ -236,13 +242,21 @@ def simple_table(
 	else:
 		display_cols = list(pivot_level_cols) + ['statistics'] + pivot_columns
 	
+	# Include label column if requested
+	if include_label and 'label' in df.columns:
+		# Insert label after level columns
+		label_pos = len([c for c in display_cols if c.startswith('_Level_')])
+		display_cols.insert(label_pos, 'label')
+	
 	display_df = df[display_cols].copy()
 	
 	# Rename columns
+	rename_map = {'values': 'Value'}
 	if not pivot_statistics or by != "":
-		display_df = display_df.rename(columns={'statistics': 'Statistic', 'values': 'Value'})
-	else:
-		display_df = display_df.rename(columns={'values': 'Value'})
+		rename_map['statistics'] = 'Statistic'
+	if include_label:
+		rename_map['label'] = 'Analysis'
+	display_df = display_df.rename(columns=rename_map)
 
 	# Remove rows where all level columns are None
 	remaining_level_cols = [c for c in display_df.columns if c.startswith('_Level_')]

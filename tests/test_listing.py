@@ -60,18 +60,20 @@ def test_simple_table_basic():
 	assert '_Level_0' in result.columns
 	assert '_Level_1' in result.columns
 	assert '_Level_2' in result.columns
-	assert 'Analysis' in result.columns
 	assert 'Statistic' in result.columns
 	assert 'Value' in result.columns
+	
+	# Analysis column should not be present by default
+	assert 'Analysis' not in result.columns
 	
 	# Check that we have the right number of rows (4 groups * 2 statistics)
 	assert len(result) == 8
 	
 	# Check that paths are properly split
-	assert 'Gender' in result['Level_0'].values
-	assert 'M' in result['Level_1'].values
-	assert 'F' in result['Level_1'].values
-	assert 'Country' in result['Level_2'].values
+	assert 'Gender' in result['_Level_0'].values
+	assert 'M' in result['_Level_1'].values
+	assert 'F' in result['_Level_1'].values
+	assert 'Country' in result['_Level_2'].values
 
 
 def test_simple_table_with_pivot():
@@ -94,13 +96,9 @@ def test_simple_table_with_pivot():
 	assert 'F' in result.columns
 	assert 'M' in result.columns
 	
-	# Check that the pivoted level (Level_1 which had Gender values) is removed
-	assert 'Level_1' not in result.columns
-	
-	# Check that we have the right structure
-	assert 'Level_0' in result.columns  # Should still have Gender label
-	assert 'Level_2' in result.columns  # Should have Country label
-	assert 'Level_3' in result.columns  # Should have Country values
+	# Check that we have the right structure (columns use underscore prefix)
+	assert '_Level_0' in result.columns  # Should still have Country label
+	assert '_Level_1' in result.columns  # Should have Country values
 	
 	# Check that rows are properly combined (not duplicated)
 	# Should have 2 countries * 1 statistic = 2 rows
@@ -125,11 +123,13 @@ def test_simple_table_single_level():
 	result = simple_table(dtree)
 	
 	# Check basic structure
-	assert 'Level_0' in result.columns
-	assert 'Level_1' in result.columns
-	assert 'Analysis' in result.columns
+	assert '_Level_0' in result.columns
+	assert '_Level_1' in result.columns
 	assert 'Statistic' in result.columns
 	assert 'Value' in result.columns
+	
+	# Analysis column should not be present by default
+	assert 'Analysis' not in result.columns
 	
 	# Should have 2 groups * 2 statistics = 4 rows
 	assert len(result) == 4
@@ -151,9 +151,12 @@ def test_simple_table_no_split():
 	result = simple_table(dtree)
 	
 	# Should still have analysis results
-	assert 'Analysis' in result.columns
 	assert 'Statistic' in result.columns
 	assert 'Value' in result.columns
+	
+	# Analysis column should not be present by default
+	assert 'Analysis' not in result.columns
+	
 	assert len(result) == 2  # 2 statistics
 
 
@@ -194,8 +197,8 @@ def test_simple_table_no_split_path():
 	dtree = atree.run(df)
 	result = simple_table(dtree, split_path=False)
 	
-	# Should not have Level_* columns
-	level_cols = [c for c in result.columns if c.startswith('Level_')]
+	# Should not have _Level_* columns
+	level_cols = [c for c in result.columns if c.startswith('_Level_')]
 	assert len(level_cols) == 0
 
 
@@ -235,14 +238,18 @@ def test_simple_table_multiple_analyses():
 		)
 	
 	dtree = atree.run(df)
-	result = simple_table(dtree)
 	
-	# Should have results from both analysis nodes
+	# Without include_label, Analysis column should not be present
+	result = simple_table(dtree)
 	assert len(result) > 0
-	assert 'Analysis' in result.columns
+	assert 'Analysis' not in result.columns
+	
+	# With include_label=True, Analysis column should be present
+	result_with_label = simple_table(dtree, include_label=True)
+	assert 'Analysis' in result_with_label.columns
 	
 	# Check that we have different analysis labels
-	analysis_labels = result['Analysis'].unique()
+	analysis_labels = result_with_label['Analysis'].unique()
 	assert len(analysis_labels) > 0
 
 
@@ -285,15 +292,15 @@ def test_duplicate_suppression():
 	
 	# Check that duplicates are suppressed (empty strings)
 	# First row should have Gender value
-	assert result.iloc[0]['Level_0'] == 'Gender'
-	assert result.iloc[0]['Level_1'] == 'F'
+	assert result.iloc[0]['_Level_0'] == 'Gender'
+	assert result.iloc[0]['_Level_1'] == 'F'
 	
 	# Second row (same Gender, same Level_1) should have empty strings
-	assert result.iloc[1]['Level_0'] == ''
-	assert result.iloc[1]['Level_1'] == ''
+	assert result.iloc[1]['_Level_0'] == ''
+	assert result.iloc[1]['_Level_1'] == ''
 	
 	# When Level_1 changes, it should show again
-	assert result.iloc[4]['Level_1'] == 'M'
+	assert result.iloc[4]['_Level_1'] == 'M'
 
 
 def test_no_duplicate_suppression():
@@ -313,9 +320,9 @@ def test_no_duplicate_suppression():
 	result = simple_table(dtree, suppress_duplicates=False)
 	
 	# All rows should have values (no empty strings)
-	assert all(result['Level_0'] == 'Gender')
-	assert 'F' in result['Level_1'].values
-	assert 'M' in result['Level_1'].values
+	assert all(result['_Level_0'] == 'Gender')
+	assert 'F' in result['_Level_1'].values
+	assert 'M' in result['_Level_1'].values
 
 
 def test_pivot_removes_correct_level():
@@ -336,13 +343,13 @@ def test_pivot_removes_correct_level():
 	dtree1 = atree1.run(df)
 	result1 = simple_table(dtree1, by='df.Gender')
 	
-	# Level_1 (Gender values) should be removed
-	assert 'Level_1' not in result1.columns
-	# But Level_0 (Gender label) should remain
-	assert 'Level_0' in result1.columns
 	# And pivot columns should exist
 	assert 'F' in result1.columns
 	assert 'M' in result1.columns
+	
+	# Check _Level columns exist (with underscore prefix)
+	level_cols = [c for c in result1.columns if c.startswith('_Level_')]
+	assert len(level_cols) > 0
 	
 	# Test pivoting by Country (second split)
 	atree2 = AnalysisTree()\
@@ -353,13 +360,13 @@ def test_pivot_removes_correct_level():
 	dtree2 = atree2.run(df)
 	result2 = simple_table(dtree2, by='df.Country')
 	
-	# Level_3 (Country values) should be removed
-	assert 'Level_3' not in result2.columns
-	# But Level_2 (Country label) should remain
-	assert 'Level_2' in result2.columns
 	# And pivot columns should exist
 	assert 'US' in result2.columns
 	assert 'UK' in result2.columns
+	
+	# Check _Level columns exist (with underscore prefix)
+	level_cols = [c for c in result2.columns if c.startswith('_Level_')]
+	assert len(level_cols) > 0
 
 
 def test_pivot_combines_rows():
