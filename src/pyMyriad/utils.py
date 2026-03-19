@@ -1,6 +1,67 @@
 import pandas as pd
 import inspect
+import ast
+import warnings
 from typing import Callable, Union, Any
+
+
+# Module-level default imports for expression evaluation
+_DEFAULT_IMPORTS = {}
+_default_imports_warned = False
+
+
+def _get_default_imports():
+    """Get default imports (numpy as np, pandas as pd) if available.
+    
+    Returns a dict with 'np' and 'pd' keys if those modules are importable.
+    Prints a one-time warning when defaults are used.
+    """
+    global _default_imports_warned
+    
+    if _DEFAULT_IMPORTS:
+        return _DEFAULT_IMPORTS
+    
+    try:
+        import numpy as np
+        _DEFAULT_IMPORTS['np'] = np
+    except ImportError:
+        pass
+    
+    _DEFAULT_IMPORTS['pd'] = pd  # pandas is already imported
+    
+    return _DEFAULT_IMPORTS
+
+
+def _inject_default_imports(ctx: dict, warn: bool = True) -> dict:
+    """Inject default imports into context if not already present.
+    
+    Args:
+        ctx: The context dictionary to update
+        warn: Whether to warn about injecting defaults
+    
+    Returns:
+        Updated context dictionary with defaults injected
+    """
+    global _default_imports_warned
+    
+    defaults = _get_default_imports()
+    injected = []
+    
+    for name, module in defaults.items():
+        if name not in ctx:
+            ctx[name] = module
+            injected.append(name)
+    
+    if warn and injected and not _default_imports_warned:
+        _default_imports_warned = True
+        warnings.warn(
+            f"Auto-injected default imports ({', '.join(injected)}) for expression evaluation. "
+            "To silence this warning, pass explicit environ={'np': np, ...} to run() or use lambda functions.",
+            UserWarning,
+            stacklevel=6
+        )
+    
+    return ctx
 
 
 def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, **kwargs):
@@ -37,6 +98,9 @@ def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, **kwargs):
     ctx = {}
     if extra_context is not None:
         ctx.update(extra_context)
+    
+    # Inject default imports (np, pd) if not already in context
+    _inject_default_imports(ctx, warn=False)  # Warning handled at higher level
 
     # Evaluate each expression/function
     results = {}
@@ -51,16 +115,50 @@ def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, **kwargs):
     return results
 
     
-def get_top_globals():
-    """Get the globals dictionary from the top-level frame"""
-    frame = inspect.currentframe()
+def get_caller_globals():
+    """Get the globals dictionary from the caller's frame (outside pyMyriad modules).
     
-    # Navigate up the frame stack until we reach the top
-    while frame.f_back is not None:
+    This function walks up the call stack and returns the globals from the first
+    frame that is not part of the pyMyriad package. This allows expressions like
+    'np.mean(df.A)' to work when numpy is imported in the user's code.
+    
+    Returns:
+        dict: The globals dictionary from the caller's frame, with default imports
+              (numpy as np, pandas as pd) injected if not already present.
+    """
+    frame = inspect.currentframe()
+    pymyriad_path = __file__.rsplit('/', 1)[0]  # Directory containing this module
+    
+    # Walk up the stack to find the first frame outside pyMyriad
+    while frame is not None:
+        frame_file = frame.f_code.co_filename
+        
+        # Check if this frame is outside the pyMyriad package
+        if not frame_file.startswith(pymyriad_path):
+            caller_globals = frame.f_globals.copy()
+            # Inject default imports if not present
+            _inject_default_imports(caller_globals, warn=True)
+            return caller_globals
+        
         frame = frame.f_back
     
-    # Return the globals from the top-level frame
-    return frame.f_globals
+    # Fallback: return empty dict with default imports
+    ctx = {}
+    _inject_default_imports(ctx, warn=True)
+    return ctx
+
+
+def get_top_globals():
+    """Get the globals dictionary from the caller's frame.
+    
+    Note: This function is kept for backward compatibility but now uses
+    get_caller_globals() which finds the caller's frame instead of the
+    absolute top of the stack.
+    
+    Returns:
+        dict: The globals dictionary from the caller's frame.
+    """
+    return get_caller_globals()
 
 
 def analysis_to_string(analysis):
@@ -139,6 +237,9 @@ def scope_cross_eval(df: pd.DataFrame = None, ref_df:pd.DataFrame = None, extra_
     ctx = {}
     if extra_context is not None:
         ctx.update(extra_context)
+    
+    # Inject default imports (np, pd) if not already in context
+    _inject_default_imports(ctx, warn=False)  # Warning handled at higher level
 
     # Evaluate each expression/function
     results = {}
