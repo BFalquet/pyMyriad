@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from pyMyriad import AnalysisTree, simple_table
+from pyMyriad import AnalysisTree, simple_table, cascade_table
 from pyMyriad.listing import _clean_path_element, _split_path_into_levels
 
 
@@ -160,8 +160,8 @@ def test_simple_table_no_split():
 	assert len(result) == 2  # 2 statistics
 
 
-def test_simple_table_include_non_analysis():
-	"""Test simple_table with include_non_analysis flag."""
+def test_cascade_table():
+	"""Test cascade_table includes all tree nodes."""
 	df = pd.DataFrame({
 		'Gender': ['M', 'M', 'F', 'F'],
 		'Income': [50000, 60000, 70000, 80000]
@@ -173,14 +173,45 @@ def test_simple_table_include_non_analysis():
 	
 	dtree = atree.run(df)
 	
-	# Without non-analysis rows
-	result_analysis_only = simple_table(dtree, include_non_analysis=False)
+	# simple_table shows only analysis rows
+	result_analysis_only = simple_table(dtree)
 	
-	# With non-analysis rows
-	result_all = simple_table(dtree, include_non_analysis=True)
+	# cascade_table shows all tree nodes
+	result_all = cascade_table(dtree)
 	
-	# The version with non-analysis should have more rows
+	# cascade_table should have more rows than simple_table
 	assert len(result_all) >= len(result_analysis_only)
+
+
+def test_cascade_table_with_pivot():
+	"""Test cascade_table with by parameter for pivoting."""
+	df = pd.DataFrame({
+		'Gender': ['M', 'M', 'F', 'F', 'M', 'F'],
+		'Country': ['US', 'UK', 'US', 'UK', 'US', 'UK'],
+		'Income': [50000, 60000, 70000, 80000, 55000, 75000]
+	})
+	
+	atree = AnalysisTree()\
+		.split_by('df.Gender')\
+		.split_by('df.Country')\
+		.analyze_by(mean_income=lambda df: np.mean(df.Income))
+	
+	dtree = atree.run(df)
+	
+	# cascade_table with by should work without errors
+	result = cascade_table(dtree, by='df.Gender')
+	
+	# Should have pivot columns (F and M)
+	assert 'F' in result.columns
+	assert 'M' in result.columns
+	
+	# Should have more rows than simple_table due to hierarchy markers
+	simple_result = simple_table(dtree, by='df.Gender')
+	assert len(result) >= len(simple_result)
+	
+	# Test with pivot_statistics as well
+	result_pivot = cascade_table(dtree, by='df.Gender', pivot_statistics=True)
+	assert len(result_pivot) > 0
 
 
 def test_simple_table_no_split_path():

@@ -10,7 +10,7 @@ import numpy as np
 import sys
 sys.path.insert(0, '../../src')
 
-from pyMyriad import AnalysisTree, simple_table, gt_table
+from pyMyriad import AnalysisTree, simple_table, cascade_table, gt_table
 
 # Create sample data
 np.random.seed(42)
@@ -113,12 +113,12 @@ result4 = simple_table(dtree4)
 print(result4.to_string())
 
 print("\n" + "=" * 80)
-print("EXAMPLE 6: Including Non-Analysis Rows")
+print("EXAMPLE 6: Including Non-Analysis Rows (cascade_table)")
 print("=" * 80)
-print("\nShowing all tree nodes including splits and levels...\n")
+print("\nShowing all tree nodes including splits and levels using cascade_table()...\n")
 
-# Show all rows including non-analysis
-result5 = simple_table(dtree, include_non_analysis=True)
+# Show all rows including non-analysis using cascade_table
+result5 = cascade_table(dtree)
 print(result5.head(20).to_string())
 print(f"\n... ({len(result5)} total rows)")
 
@@ -165,12 +165,13 @@ print("""
    "Analysis" for all rows.
 
 6. FLEXIBLE DISPLAY: Control what's shown with:
-   - include_non_analysis: Show/hide intermediate tree nodes
+   - cascade_table(): Show all tree nodes (splits, summaries, analyses)
    - split_path: Enable/disable hierarchical column splitting
    - suppress_duplicates: Enable/disable duplicate suppression
 
-7. SIMPLE_TABLE vs GT_TABLE:
-   - simple_table(): Returns a pandas DataFrame (no dependencies)
+7. SIMPLE_TABLE vs CASCADE_TABLE vs GT_TABLE:
+   - simple_table(): Returns a pandas DataFrame with only analysis results
+   - cascade_table(): Returns a pandas DataFrame with all tree nodes
    - gt_table(): Returns a formatted Great Tables object (requires great-tables)
 
 8. MULTI-LEVEL ANALYSES: Properly handles both terminal analyses (.analyze_by)
