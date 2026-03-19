@@ -17,7 +17,19 @@ class AnalysisTree(list):
     Examples:
         tree = AnalysisTree()
         print(tree)
+    
+    Note:
+        For string expressions like "np.mean(df.A)", numpy and pandas are auto-injected 
+        as 'np' and 'pd'. To avoid warnings, use lambda functions instead:
+        `analyze_by(mean_a=lambda df: np.mean(df.A))`
+        
+        Or explicitly set the environment:
+        `AnalysisTree.set_default_environ({'np': np, 'pd': pd})`
     """
+    
+    # Class-level default environment for expression evaluation
+    _default_environ = None
+    
     def __init__(self, *args, id:str = None):
         """ Initializes the AnalysisTree object.
         Args:
@@ -59,7 +71,10 @@ class AnalysisTree(list):
         """
         
         if environ is None:
-            environ = get_top_globals()
+            if AnalysisTree._default_environ is not None:
+                environ = AnalysisTree._default_environ.copy()
+            else:
+                environ = get_top_globals()
 
         _N = count_or_length(data, self.id)
 
@@ -78,6 +93,34 @@ class AnalysisTree(list):
         # TODO: hande case where res_name is not a string.
 
         return DataTree(_N = _N, **res)
+    
+    @classmethod
+    def set_default_environ(cls, environ: dict = None):
+        """Set a class-level default environment for expression evaluation.
+        
+        This allows you to configure imports once instead of passing environ
+        to every run() call. When set, this environment is used as the default
+        for all AnalysisTree instances.
+        
+        Args:
+            environ (dict, optional): A dictionary mapping names to modules/values.
+                Pass None to clear the default and revert to auto-detection.
+        
+        Examples:
+            import numpy as np
+            import pandas as pd
+            
+            # Set default imports once
+            AnalysisTree.set_default_environ({'np': np, 'pd': pd})
+            
+            # Now all trees will use these imports without warnings
+            tree = AnalysisTree().split_by("df.Gender").analyze_by(mean="np.mean(df.Income)")
+            result = tree.run(df)  # No need to pass environ
+            
+            # Clear the default
+            AnalysisTree.set_default_environ(None)
+        """
+        cls._default_environ = environ
     
     def split_by(self, expr: str = None, label: str = None, **kwargs):
         """Add a split node at the extremites of the branches.
