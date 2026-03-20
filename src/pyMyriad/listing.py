@@ -10,9 +10,26 @@ Main functions:
 - gt_table(): Create a formatted HTML table using great-tables
 
 Example:
+    >>> from pyMyriad import AnalysisTree, simple_table, gt_table
+    >>> 
+    >>> # Build and run analysis
+    >>> tree = AnalysisTree().split_by('df.Gender').analyze_by(
+    ...     mean=lambda df: np.mean(df.Income),
+    ...     count=lambda df: len(df)
+    ... )
     >>> result = tree.run(df)
+    >>> 
+    >>> # Basic DataFrame table
     >>> table = simple_table(result, by='df.Gender')
+    >>> print(table)
+    >>> 
+    >>> # Formatted HTML table
     >>> html_table = gt_table(result, title="Analysis Results")
+    >>> html_table.save("report.html")
+
+See also:
+    - examples/03_tables_and_listings.ipynb: Comprehensive table examples
+    - tabular.py: Data flattening and formatting utilities
 """
 
 from __future__ import annotations

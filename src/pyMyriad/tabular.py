@@ -10,9 +10,27 @@ Key functions:
 - flatten(): Alias for tabulate()
 
 Example:
+    >>> from pyMyriad import AnalysisTree, format_statistics
+    >>> from pyMyriad.tabular import tabulate, flatten
+    >>> 
+    >>> # Run analysis
+    >>> tree = AnalysisTree().split_by('df.Gender').analyze_by(
+    ...     mean=lambda df: np.mean(df.Income),
+    ...     std=lambda df: np.std(df.Income)
+    ... )
     >>> result = tree.run(df)
+    >>> 
+    >>> # Flatten to DataFrame
     >>> table = tabulate(result, unnest=True)
+    >>> print(table)
+    >>> 
+    >>> # Format statistics
     >>> formatted = format_statistics(result, summary="{mean:.2f}±{std:.2f}")
+
+See also:
+    - examples/03_tables_and_listings.ipynb: Table generation examples
+    - examples/05_formatting_statistics.ipynb: Formatting examples
+    - listing.py: User-facing table generation functions
 """
 
 from .data_tree import DataNode, SplitDataNode, LvlDataNode, DataTree

@@ -21,6 +21,11 @@ Example:
     >>> tree = tree.split_by('df.Gender')
     >>> tree = tree.analyze_by(mean=lambda df: np.mean(df.Income))
     >>> result = tree.run(df)
+
+See also:
+    - ARCHITECTURE.md: Detailed architectural overview
+    - examples/EXAMPLES_GUIDE.md: Usage patterns and examples
+    - data_tree.py: Result data structures
 """
 
 import sys
