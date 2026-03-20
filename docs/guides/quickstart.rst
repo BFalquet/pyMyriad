@@ -48,16 +48,16 @@ Here's a simple example to get you started:
 
 .. code-block:: text
 
-Data Tree
-  Split: gender
-    └- F
-        analysis: wage analysis
-        └- mean_income: 75000.0
-        └- count: 3
-    └- M
-        analysis: wage analysis
-        └- mean_income: 50000.0
-        └- count: 3
+    Data Tree
+    Split: gender
+        └- F
+            analysis: wage analysis
+            └- mean_income: 75000.0
+            └- count: 3
+        └- M
+            analysis: wage analysis
+            └- mean_income: 50000.0
+            └- count: 3
 
 
 Understanding the Workflow
