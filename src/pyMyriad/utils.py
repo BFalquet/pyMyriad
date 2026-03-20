@@ -1,3 +1,20 @@
+"""Utility functions module.
+
+This module provides helper functions for expression evaluation, string conversion,
+and environment management used throughout pyMyriad.
+
+Key functions:
+- scope_eval(): Evaluate string expressions or call functions with DataFrame context
+- scope_cross_eval(): Evaluate expressions with two DataFrames (for comparisons)
+- analysis_to_string(): Convert lambda functions or expressions to readable strings
+- count_or_length(): Count unique values or return length
+- get_top_globals(): Get the caller's global namespace for auto-imports
+- get_caller_globals(): Get caller's globals (alternative method)
+
+These utilities enable pyMyriad's flexible expression evaluation system that supports
+both string expressions and lambda functions.
+"""
+
 import pandas as pd
 import inspect
 import ast

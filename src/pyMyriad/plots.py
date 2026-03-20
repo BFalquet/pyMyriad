@@ -1,3 +1,22 @@
+"""Visualization module.
+
+This module provides functions for creating publication-ready plots from DataTree
+analysis results.
+
+Main plotting functions:
+- forest_plot(): Create forest plots for effect sizes and confidence intervals
+- distribution_plot(): Create distribution plots showing raw data
+
+Helper functions:
+- plot_1d(): Internal function for 1D plot types
+- plot_distribution(): Internal function for distribution plot rendering
+
+Example:
+    >>> result = tree.run(df)
+    >>> forest_plot(result, x='effect', x_err='ci_width')
+    >>> distribution_plot(result, x='values', type='scatter')
+"""
+
 from .tabular import flatten, flatten_data
 import pandas as pd
 import numpy as np
@@ -19,8 +38,19 @@ def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), type:str = 
         jitter (bool, optional): Whether to apply jittering to the y-axis positions to avoid overplotting. Defaults to False.
         show (bool, optional): Whether to display the plot immediately. If False, returns the figure object. Defaults to True.
 
+    Returns:
+        None: Displays the plot using matplotlib's show().
+
     Examples:
-P
+        >>> tree = AnalysisTree().split_by('df.Gender').analyze_by(
+        ...     x=lambda df: np.mean(df.Income),
+        ...     err=lambda df: np.std(df.Income) / np.sqrt(len(df))
+        ... )
+        >>> result = tree.run(df)
+        >>> forest_plot(result)
+        
+        >>> # Forest plot with faceting by split
+        >>> forest_plot(result, col='df.Gender', jitter=True)
     """
 
     res = flatten(dtree, unnest=True, by = col)
@@ -104,12 +134,24 @@ def plot_1d(data, type:str = "forest", x:str = "x", x_err:str = "err", **kwargs)
     """Create a 1D plot.
 
     Args:
-        type (str, optional): The type of plot to create. Currently supports "forest", "range", "bar", "point".
+        data (pd.DataFrame): The DataFrame containing the plot data.
+        type (str, optional): The type of plot to create. Currently supports "forest", "range", "bar", "point". Defaults to "forest".
         x (str, optional): The column name for the x-axis values. Defaults to "x".
         x_err (str, optional): The column name for the x-axis error values. Defaults to "err".
+        **kwargs: Additional keyword arguments passed to matplotlib plotting functions.
+
+    Returns:
+        None: Adds plot elements to the current matplotlib axes.
 
     Examples:
-
+        >>> data = pd.DataFrame({'x': [1.5, 2.3], 'err': [0.2, 0.3], 'y_jitter': [0, 1]})
+        >>> plot_1d(data, type='forest', x='x', x_err='err')
+        
+        >>> # Point plot without error bars
+        >>> plot_1d(data, type='point', x='x')
+        
+        >>> # Bar plot
+        >>> plot_1d(data, type='bar', x='x')
     """
     y = "y_jitter"
 
@@ -151,19 +193,32 @@ def plot_1d(data, type:str = "forest", x:str = "x", x_err:str = "err", **kwargs)
 
 
 
-def distribution_plot(dtree, type:str="forest", x:str = None, col:str = (), jitter:bool = False, show = True):
-    """Create a forest plot from a DataTree object.
+def distribution_plot(dtree, type:str="scatter", x:str = None, col:str = (), jitter:bool = False, show = True):
+    """Create a distribution plot from a DataTree object.
 
     Args:
-        dtree (DataTree): The DataTree object containing the analysis results.
-        type (str, optional): The type of plot to create. Defaults to "scatter".
-        x (str, optional): The column name for the x-axis values.
+        dtree (DataTree): The DataTree object containing the analysis results with raw data.
+        type (str, optional): The type of plot to create. Currently supports "scatter", "boxplot". Defaults to "scatter".
+        x (str, optional): The column name for the x-axis values. If None, attempts to auto-detect. Can also be a dict mapping facet labels to column names.
         col (str or list of str, optional): Column(s) to facet the plot by. Defaults to ().
         jitter (bool, optional): Whether to apply jittering to the y-axis positions to avoid overplotting. Defaults to False.
         show (bool, optional): Whether to display the plot immediately. If False, returns the figure object. Defaults to True.
 
-    Examples:
+    Returns:
+        None: Displays the plot using matplotlib's show().
 
+    Examples:
+        >>> tree = AnalysisTree().split_by('df.Gender').analyze_by(
+        ...     income_data=lambda df: df[['Income']]
+        ... )
+        >>> result = tree.run(df)
+        >>> distribution_plot(result, x='Income', type='scatter')
+        
+        >>> # With faceting and jitter
+        >>> distribution_plot(result, x='Income', col='df.Gender', jitter=True)
+        
+        >>> # Boxplot
+        >>> distribution_plot(result, x='Income', type='boxplot')
     """
 
     res = flatten_data(dtree, unnest=False, by = col)
@@ -245,15 +300,28 @@ def distribution_plot(dtree, type:str="forest", x:str = None, col:str = (), jitt
     plt.show()
 
 def plot_distribution(data, type:str = "scatter", x:str = None, **kwargs):
-    """Create a 1D plot.
+    """Create a distribution plot from data with nested summary DataFrames.
 
     Args:
-        data (pd.DataFrame): The data frame containing the data to plot.
-        type (str, optional): The type of plot to create. Currently supports "forest", "range", "bar", "point".
-        x (str, optional): The column name for the x-axis values.
+        data (pd.DataFrame): The DataFrame containing the data to plot with 'summary' column.
+        type (str, optional): The type of plot to create. Currently supports "scatter", "boxplot". Defaults to "scatter".
+        x (str, optional): The column name for the x-axis values. Can be a string, dict, or None for auto-detection.
+        **kwargs: Additional keyword arguments passed to matplotlib plotting functions.
+
+    Returns:
+        None: Adds plot elements to the current matplotlib axes.
 
     Examples:
-
+        >>> # Data with nested summary column
+        >>> data = pd.DataFrame({
+        ...     'summary': [pd.DataFrame({'values': [1, 2, 3]})],
+        ...     'y_jitter': [0],
+        ...     'label': ['Group A']
+        ... })
+        >>> plot_distribution(data, type='scatter', x='values')
+        
+        >>> # With dict mapping for different facets
+        >>> plot_distribution(data, type='scatter', x={'Group A': 'values'})
     """
     y = "y_jitter"
     # The data are nested in a data frame in the "summary" column.
