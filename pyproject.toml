@@ -31,3 +31,10 @@ docs = [
 
 [project.scripts]
 foocli = "pyMyriad.cli:main"
+
+[tool.pytest.ini_options]
+markers = [
+    "performance: marks tests as performance benchmarks (deselect with '-m \"not performance\"')",
+]
+# Skip performance tests by default
+addopts = "-m 'not performance'"
