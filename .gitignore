@@ -12,3 +12,8 @@ wheels/
 # Documentation builds
 docs/_build/
 docs_quarto/
+docs/_autosummary/
+docs/generated/
+
+# macOS
+.DS_Store
