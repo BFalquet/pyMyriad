@@ -1,3 +1,22 @@
+"""Data tree result structures module.
+
+This module provides classes for storing the results of running an AnalysisTree
+on data. The tree structure mirrors the AnalysisTree but contains actual computed
+values instead of analysis specifications.
+
+The main classes are:
+- DataTree: The root container for analysis results
+- SplitDataNode: Results organized by split groups
+- LvlDataNode: Results for a specific level within a split
+- DataNode: Leaf node containing actual computed values
+
+DataTree objects are typically created by running an AnalysisTree on data:
+    >>> result = analysis_tree.run(df)
+    >>> isinstance(result, DataTree)  # True
+
+DataTree objects can be flattened to pandas DataFrames for export and visualization.
+"""
+
 import pandas as pd
 import numpy as np
 from .utils import scope_eval, get_top_globals, analysis_to_string, count_or_length
@@ -21,7 +40,7 @@ class DataNode():
             label (str, optional): A string label identifying the node. Defaults to an empty string.
             depth (int, optional): The depth of the node in the tree structure. Defaults to 0.
         Examples:
-            DataNode(data = df, summary = {"mean": 5}, label = "Summary", depth = 1)
+            >>> DataNode(data = df, summary = {"mean": 5}, label = "Summary", depth = 1)
         """
         
         self.data = data
@@ -31,7 +50,14 @@ class DataNode():
         self._N = _N
 
     def __str__(self, ind: int = 0):
-
+        """Return a string representation of the data node.
+        
+        Args:
+            ind (int): Indentation level for nested display. Defaults to 0.
+            
+        Returns:
+            str: Formatted representation of the node's summary statistics.
+        """
         res = [f"{' ' * (ind * 2)}  └- {k}: {str(v)}\n" for k,v in (self.summary or {}).items()]
         return f"{' ' * (ind * 2)}  analysis: {self.label}\n" + "".join(res)
     
@@ -78,7 +104,7 @@ class SplitDataNode(dict):
         Returns:
             None
         Examples:
-            SplitDataNode()
+            >>> SplitDataNode()
         """
 
         acceptable_lst = [isinstance(x, (LvlDataNode)) for x in kwargs.values()] 
@@ -88,7 +114,14 @@ class SplitDataNode(dict):
         self.label = label or analysis_to_string(split_var)
 
     def __str__(self, ind: int = 0):
+        """Return a string representation of the split data node.
         
+        Args:
+            ind (int): Indentation level for nested display. Defaults to 0.
+            
+        Returns:
+            str: Formatted representation of the split and its levels.
+        """
         res = [x.__str__(ind = ind + 1) for x in self.values()]
         recusive_str = "".join(res)
         return f"{' ' * (ind * 2)}Split: {self.label}\n" + recusive_str
@@ -146,7 +179,7 @@ class LvlDataNode(dict):
         Returns:
             None
         Examples:
-            LvlDataNode([], split_lvl = "level1")
+            >>> LvlDataNode([], split_lvl = "level1")
         """
 
         acceptable_lst = [isinstance(x, (SplitDataNode, DataNode)) for x in kwargs.values()] 
@@ -159,7 +192,14 @@ class LvlDataNode(dict):
         self._N = _N
 
     def __str__(self, ind: int = 0):
+        """Return a string representation of the level data node.
         
+        Args:
+            ind (int): Indentation level for nested display. Defaults to 0.
+            
+        Returns:
+            str: Formatted representation of the level and its children.
+        """
         res = [x.__str__(ind = ind + 1) for x in self.values()]
         recusive_str = "".join(res)
         
@@ -218,7 +258,7 @@ class DataTree(dict):
         Raises:
             AssertionError: If any value in kwargs is not an instance of SplitDataNode or Data
         Examples:
-            DataTree()
+            >>> DataTree()
         """
         acceptable_lst = [isinstance(x, (SplitDataNode, DataNode)) for x in kwargs.values()] 
         assert all(acceptable_lst)
@@ -226,6 +266,11 @@ class DataTree(dict):
         self._N = _N
 
     def __str__(self):
+        """Return a string representation of the data tree.
+        
+        Returns:
+            str: Formatted tree structure showing splits, levels, and results.
+        """
         ind = 0
         res = [x.__str__(ind = ind + 1) for x in self.values()]
         recusive_str = "".join(res)

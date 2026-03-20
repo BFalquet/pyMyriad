@@ -1,3 +1,20 @@
+"""Table generation module.
+
+This module provides functions for generating formatted tables from DataTree
+analysis results. Supports both simple pandas DataFrames and rich HTML tables
+using great-tables.
+
+Main functions:
+- simple_table(): Create a pandas DataFrame table
+- cascade_table(): Create a hierarchical table showing tree structure
+- gt_table(): Create a formatted HTML table using great-tables
+
+Example:
+    >>> result = tree.run(df)
+    >>> table = simple_table(result, by='df.Gender')
+    >>> html_table = gt_table(result, title="Analysis Results")
+"""
+
 from __future__ import annotations
 
 from typing import Optional
