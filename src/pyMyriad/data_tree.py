@@ -40,7 +40,7 @@ class DataNode():
             label (str, optional): A string label identifying the node. Defaults to an empty string.
             depth (int, optional): The depth of the node in the tree structure. Defaults to 0.
         Examples:
-            DataNode(data = df, summary = {"mean": 5}, label = "Summary", depth = 1)
+            >>> DataNode(data = df, summary = {"mean": 5}, label = "Summary", depth = 1)
         """
         
         self.data = data
@@ -104,7 +104,7 @@ class SplitDataNode(dict):
         Returns:
             None
         Examples:
-            SplitDataNode()
+            >>> SplitDataNode()
         """
 
         acceptable_lst = [isinstance(x, (LvlDataNode)) for x in kwargs.values()] 
@@ -179,7 +179,7 @@ class LvlDataNode(dict):
         Returns:
             None
         Examples:
-            LvlDataNode([], split_lvl = "level1")
+            >>> LvlDataNode([], split_lvl = "level1")
         """
 
         acceptable_lst = [isinstance(x, (SplitDataNode, DataNode)) for x in kwargs.values()] 
@@ -258,7 +258,7 @@ class DataTree(dict):
         Raises:
             AssertionError: If any value in kwargs is not an instance of SplitDataNode or Data
         Examples:
-            DataTree()
+            >>> DataTree()
         """
         acceptable_lst = [isinstance(x, (SplitDataNode, DataNode)) for x in kwargs.values()] 
         assert all(acceptable_lst)

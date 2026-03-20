@@ -96,13 +96,13 @@ def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, **kwargs):
         dict: A dictionary with keys as the names of the evaluated expressions/functions and values as the results.
     Examples:
         # String expressions (original behavior)
-        scope_eval(df=df, mean_a="np.mean(df.A)", std_b="np.std(df.B)")
+        >>> scope_eval(df=df, mean_a="np.mean(df.A)", std_b="np.std(df.B)")
         
         # Function expressions (new behavior)  
-        scope_eval(df=df, mean_a=lambda df: np.mean(df.A), std_b=lambda df: np.std(df.B))
+        >>> scope_eval(df=df, mean_a=lambda df: np.mean(df.A), std_b=lambda df: np.std(df.B))
         
         # Mixed usage
-        scope_eval(df=df, mean_a=lambda df: np.mean(df.A), count="len(df)")
+        >>> scope_eval(df=df, mean_a=lambda df: np.mean(df.A), count="len(df)")
 
     Notes:
         - For string expressions, ensure they are valid Python expressions.
@@ -186,8 +186,8 @@ def analysis_to_string(analysis):
     Returns:
         str: The string representation of the analysis expression.
     Examples:
-        mfun = lambda df: np.mean(df.Income)
-        analysis_to_string(mfun)  # Returns: "lambda df: np.mean(df.Income)"
+        >>> mfun = lambda df: np.mean(df.Income)
+        >>> analysis_to_string(mfun)  # Returns: "lambda df: np.mean(df.Income)"
     """
     if callable(analysis):
         try:
@@ -208,11 +208,11 @@ def count_or_length(data: pd.DataFrame, id: str) -> int:
     Returns:
         int: The number of unique entities in the DataFrame.
     Examples:
-        df = pd.DataFrame({
-            "id": [1, 2, 1, 3],
-            "value": [10, 20, 10, 30]
-        })
-        count_or_length(df, "id")  # Returns: 3
+        >>> df = pd.DataFrame({
+        ...     "id": [1, 2, 1, 3],
+        ...     "value": [10, 20, 10, 30]
+        ... })
+        >>> count_or_length(df, "id")  # Returns: 3
     """
     if id is None:
         return len(data)
@@ -235,13 +235,13 @@ def scope_cross_eval(df: pd.DataFrame = None, ref_df:pd.DataFrame = None, extra_
         dict: A dictionary with keys as the names of the evaluated expressions/functions and values as the results.
     Examples:
         # String expressions comparing two DataFrames
-        scope_cross_eval(df=df, ref_df=ref_df, mean_diff="np.mean(df.A) - np.mean(ref_df.A)")
+        >>> scope_cross_eval(df=df, ref_df=ref_df, mean_diff="np.mean(df.A) - np.mean(ref_df.A)")
         
         # Function expressions (must accept two arguments: df and ref_df)
-        scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A))
+        >>> scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A))
         
         # Mixed usage
-        scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: df.A.mean() - ref_df.A.mean(), count="len(df)")
+        >>> scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: df.A.mean() - ref_df.A.mean(), count="len(df)")
 
     Notes:
         - For string expressions, both `df` and `ref_df` are available as variables.

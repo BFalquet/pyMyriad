@@ -50,11 +50,12 @@ Tree Construction Methods
 
 Analysis trees are constructed gradually by adding split and analysis nodes to a root. 
 
-AnalysisTree() 
+AnalysisTree()
+~~~~~~~~~~~~~~
 
-initializes the tree.
+initializes the tree with ``AnalysisTree()``.
 
-.. code -block:: python
+.. code-block:: python
 
    tree = AnalysisTree()  # Start with an empty tree
 
@@ -63,9 +64,9 @@ split_by()
 ~~~~~~~~~~
 
 Adds splits at the leaf nodes of all branches. Using the `df` variable as the DataFrame, one can specify either
-* a column to split by (e.g. `'df.Gender'`) which creates one branch per unique value in that column of the analysis dataset.
-* or custom split conditions (e.g. `'df.Country != "UK"'`) which creates two branches based on the condition being true or false.
-* or specify what should be in each group using keyword arguments (e.g. `Low_mid_income='df.Income < 70000'`, `High_mid_income='df.Income >= 50000'`). With this last approach, once can create overalapping or non-exhaustive groups.
+* a column to split by (e.g. ``'df.Gender'``) which creates one branch per unique value in that column of the analysis dataset.
+* or custom split conditions (e.g. ``'df.Country != "UK"'``) which creates two branches based on the condition being true or false.
+* or specify what should be in each group using keyword arguments (e.g. ``Low_mid_income='df.Income < 70000'``, ``High_mid_income='df.Income >= 50000'``). With this last approach, once can create overalapping or non-exhaustive groups.
 
 Use the `label` argument to specify a custom label for the split node. By default, the split expression is used as the label.
 
@@ -92,9 +93,9 @@ Adds analysis nodes at the leaf nodes:
 Split and analyze at specific locations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, split_by() and analyze_by() add nodes at the leaf nodes of all branches. To add nodes at specific locations, use `split_at_by()` and `analyze_at_by()`, which take a `path` argument specifying where to add the nodes. 
-The `path` is a list of the labels of the split nodes that define the branch where the new nodes should be added. 
-For example, `path=['df.Gender']` would add nodes to `splitNode` named `df.Gender`. Use `"*"` as a wildcard to mean "any label".
+By default, ``split_by()`` and ``analyze_by()`` add nodes at the leaf nodes of all branches. To add nodes at specific locations, use ``split_at_by()`` and ``analyze_at_by()``, which take a ``path`` argument specifying where to add the nodes. 
+The ``path`` is a list of the labels of the split nodes that define the branch where the new nodes should be added. 
+For example, ``path=['df.Gender']`` would add nodes to ``splitNode`` named ``df.Gender``. Use ``"*"`` as a wildcard to mean "any label".
 
 .. code-block:: python
 
@@ -119,7 +120,7 @@ Termination Signals
 ~~~~~~~~~~~~~~~~~~~
 
 The addition of an analysis node blocks the addition of further splits downstream of that node. 
-To allow further splits, set `termination=False` when adding the analysis node or use `summarize_by()` or `summarize_at_by()` instead of `analyze_by()` or `analyze_at_by()`, which have `termination=False` by default.
+To allow further splits, set ``termination=False`` when adding the analysis node or use ``summarize_by()`` or ``summarize_at_by()`` instead of ``analyze_by()`` or ``analyze_at_by()``, which have ``termination=False`` by default.
 
 .. code-block:: python
 
@@ -132,8 +133,8 @@ To allow further splits, set `termination=False` when adding the analysis node o
 Cross-Group Analysis
 --------------------
 
-To perform analyses that compare groups (e.g. treatment vs control), use `cross_analyze_by()`, 
-which takes the same arguments as `analyze_by()` but also requires a `ref_lvl` argument specifying the reference group for comparison.
+To perform analyses that compare groups (e.g. treatment vs control), use ``cross_analyze_by()``, 
+which takes the same arguments as ``analyze_by()`` but also requires a ``ref_lvl`` argument specifying the reference group for comparison.
 
 
 .. code-block:: python
@@ -153,7 +154,7 @@ which takes the same arguments as `analyze_by()` but also requires a `ref_lvl` a
    tree.run(df)
 
 In cross-analysis expressions, ``df`` is the current group and ``ref_df`` is the reference group.
-Note that cross_analyze_by() creates new combination levels during the analysis (here "Drug_vs_Placebo") that are not present in the original data.
+Note that ``cross_analyze_by()`` creates new combination levels during the analysis (here ``"Drug_vs_Placebo"``) that are not present in the original data.
 
 Expression Evaluation
 ----------------------

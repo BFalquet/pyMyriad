@@ -56,7 +56,7 @@ Compare outcomes between treatment groups:
            mean_baseline=lambda df: np.mean(df.Baseline)
        )
        .cross_analyze_by(
-           effect=lambda: np.mean(df.Outcome) - np.mean(ref_df.Outcome),
+           effect=lambda df, ref_df: np.mean(df.Outcome) - np.mean(ref_df.Outcome),
            ref_lvl='Placebo'
        ))
    
@@ -126,7 +126,10 @@ Format statistics with custom templates:
    # Apply formatting
    formatted = format_statistics(
        result,
-       format_str="Mean: {mean:.2f} (SD: {sd:.2f}, N={n})"
+       remove_original=True,
+       Mean = "{mean:.2f} 
+       SD = "{sd:.2f}", 
+       N="{n}"
    )
    
    table = simple_table(formatted)

@@ -28,38 +28,38 @@ def tabulate(dtree: DataTree, unnest: bool = False, pivot: str = ()) -> pd.DataF
     Returns:
         pd.DataFrame: A flattened representation of the DataTree.
     Examples:
-        dtree = DataTree(
-            s = SplitDataNode(
-                split_var="VAR",
-                node=LvlDataNode(
-                    split_lvl="lvl1",
-                    group1=DataNode(
-                        label="Group 1",
-                        summary={"mean_val": 10, "count": 5}
-                    ),
-                    group2=DataNode(
-                        label="Group 2",
-                        summary={"mean_val": 100, "count": 50}
-                    )
-                ),
-                node2=LvlDataNode(
-                    split_lvl="lvl2",
-                    group1=DataNode(
-                        label="Group 1",
-                        summary={"mean_val": 8, "count": 9}
-                    ),
-                    group2=DataNode(
-                        label="Group 2",
-                        summary={"mean_val": 88, "count": 99}
-                    )
-                )
-            ),
-            a = DataNode(
-                label="Overall",
-                summary={"mean_val": 15, "count": 8}
-            )
-        )
-        tabulate(dtree, unnest=True)
+        >>> dtree = DataTree(
+        ...     s = SplitDataNode(
+        ...         split_var="VAR",
+        ...         node=LvlDataNode(
+        ...             split_lvl="lvl1",
+        ...             group1=DataNode(
+        ...                 label="Group 1",
+        ...                 summary={"mean_val": 10, "count": 5}
+        ...             ),
+        ...             group2=DataNode(
+        ...                 label="Group 2",
+        ...                 summary={"mean_val": 100, "count": 50}
+        ...             )
+        ...         ),
+        ...         node2=LvlDataNode(
+        ...             split_lvl="lvl2",
+        ...             group1=DataNode(
+        ...                 label="Group 1",
+        ...                 summary={"mean_val": 8, "count": 9}
+        ...             ),
+        ...             group2=DataNode(
+        ...                 label="Group 2",
+        ...                 summary={"mean_val": 88, "count": 99}
+        ...             )
+        ...         )
+        ...     ),
+        ...     a = DataNode(
+        ...         label="Overall",
+        ...         summary={"mean_val": 15, "count": 8}
+        ...     )
+        ... )
+        >>> tabulate(dtree, unnest=True)
     """
 
     assert isinstance(dtree, DataTree)
@@ -107,38 +107,38 @@ def flatten(dtree: DataTree, unnest: bool = False, by: str = ()) -> pd.DataFrame
     Returns:
         pd.DataFrame: A flattened representation of the DataTree.
     Examples:
-        dtree = DataTree(
-            s = SplitDataNode(
-                split_var="VAR",
-                node=LvlDataNode(
-                    split_lvl="lvl1",
-                    group1=DataNode(
-                        label="Group 1",
-                        summary={"mean_val": 10, "count": 5}
-                    ),
-                    group2=DataNode(
-                        label="Group 2",
-                        summary={"mean_val": 100, "count": 50}
-                    )
-                ),
-                node2=LvlDataNode(
-                    split_lvl="lvl2",
-                    group1=DataNode(
-                        label="Group 1",
-                        summary={"mean_val": 8, "count": 9}
-                    ),
-                    group2=DataNode(
-                        label="Group 2",
-                        summary={"mean_val": 88, "count": 99}
-                    )
-                )
-            ),
-            a = DataNode(
-                label="Overall",
-                summary={"mean_val": 15, "count": 8}
-            )
-        )
-        flatten(dtree, unnest=True)
+        >>> dtree = DataTree(
+        ...     s = SplitDataNode(
+        ...         split_var="VAR",
+        ...         node=LvlDataNode(
+        ...             split_lvl="lvl1",
+        ...             group1=DataNode(
+        ...                 label="Group 1",
+        ...                 summary={"mean_val": 10, "count": 5}
+        ...             ),
+        ...             group2=DataNode(
+        ...                 label="Group 2",
+        ...                 summary={"mean_val": 100, "count": 50}
+        ...             )
+        ...         ),
+        ...         node2=LvlDataNode(
+        ...             split_lvl="lvl2",
+        ...             group1=DataNode(
+        ...                 label="Group 1",
+        ...                 summary={"mean_val": 8, "count": 9}
+        ...             ),
+        ...             group2=DataNode(
+        ...                 label="Group 2",
+        ...                 summary={"mean_val": 88, "count": 99}
+        ...             )
+        ...         )
+        ...     ),
+        ...     a = DataNode(
+        ...         label="Overall",
+        ...         summary={"mean_val": 15, "count": 8}
+        ...     )
+        ... )
+        >>> flatten(dtree, unnest=True)
     """
 
     flat_df = dtree.__flatten__(pivot = by).reset_index(drop = True)
@@ -217,31 +217,31 @@ def format_statistics(dtree: DataTree, label=None, remove_original: bool = False
     
     Examples:
         # Apply format to all nodes
-        dtree = DataTree(
-            a = DataNode(label="Mean", summary={"m": 10.5, "sd": 2.3}),
-            b = DataNode(label="Median", summary={"m": 12.0, "sd": 3.1})
-        )
-        new_dtree = format_statistics(dtree, mean_sd="{m} +/- {sd}")
+        >>> dtree = DataTree(
+        ...     a = DataNode(label="Mean", summary={"m": 10.5, "sd": 2.3}),
+        ...     b = DataNode(label="Median", summary={"m": 12.0, "sd": 3.1})
+        ... )
+        >>> new_dtree = format_statistics(dtree, mean_sd="{m} +/- {sd}")
         # Both nodes get the "mean_sd" statistic
         
         # Apply format only to specific label
-        new_dtree = format_statistics(dtree, label="Mean", result="{m} ± {sd}")
+        >>> new_dtree = format_statistics(dtree, label="Mean", result="{m} ± {sd}")
         # Only the node with label="Mean" gets the "result" statistic
         
         # Multiple formats applied to all nodes
-        new_dtree = format_statistics(
-            dtree,
-            mean_sd="{m:.1f} +/- {sd:.1f}",
-            mean_only="{m:.2f}",
-            inplace=True
-        )
+        >>> new_dtree = format_statistics(
+        ...     dtree,
+        ...     mean_sd="{m:.1f} +/- {sd:.1f}",
+        ...     mean_only="{m:.2f}",
+        ...     inplace=True
+        ... )
         
         # Remove original statistics after formatting
-        new_dtree = format_statistics(
-            dtree,
-            formatted="{m} +/- {sd}",
-            remove_original=True
-        )
+        >>> new_dtree = format_statistics(
+        ...     dtree,
+        ...     formatted="{m} +/- {sd}",
+        ...     remove_original=True
+        ... )
     """
     
     if not kwargs:
