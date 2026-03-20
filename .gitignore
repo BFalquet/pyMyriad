@@ -10,4 +10,5 @@ wheels/
 .venv
 
 # Documentation builds
-docs/
+docs/_build/
+docs_quarto/
