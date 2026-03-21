@@ -81,10 +81,14 @@ class AnalysisTree(list):
         Returns:
             str: Formatted tree structure showing splits and analyses.
         """
-        ind = 0
-        res = [x.__str__(ind = ind + 2) for x in self]
-        recusive_str = "".join(res)
-        return "Analysis Tree\n" + recusive_str
+        if len(self) == 0:
+            return "Analysis Tree\n"
+        
+        result = ["Analysis Tree\n"]
+        for i, node in enumerate(self):
+            is_last = (i == len(self) - 1)
+            result.append(node.__str__(is_last=is_last, prefix=""))
+        return "".join(result)
 
     def run(self, data: pd.DataFrame, environ: dict = None) -> DataTree:
         """Run the analysis tree on the provided DataFrame.
@@ -412,26 +416,38 @@ class SplitNode(list):
             self.label = label or analysis_to_string(expr)
             self.str = analysis_to_string(expr)
 
-    def __str__(self, ind: int = 0):
+    def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the split node.
         
         Args:
-            ind (int): Indentation level for nested display. Defaults to 0.
+            ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
+            is_last (bool): Whether this is the last child of its parent. Defaults to True.
+            prefix (str): The prefix string from parent levels. Defaults to "".
             
         Returns:
             str: Formatted representation of the split and its children.
         """
+        # Build the node expression string
         if self.expr is not None:
             res = self.str
         else:
             expr_lst = [f"{k}: {v}" for k,v in self.str.items()]
             res = " -- ".join(expr_lst)
 
-        split_str = (" " * ind) + f"└- Split Node {self.label}: [" + res + "]\n"
-        recusive_lst = [x.__str__(ind = ind + 2) for x in self]
-        recusive_str = "".join(recusive_lst)
-
-        return split_str + recusive_str
+        # Choose connector based on position
+        connector = "└─ " if is_last else "├─ "
+        split_str = prefix + connector + f"Split Node {self.label}: [" + res + "]\n"
+        
+        # Build prefix for children
+        child_prefix = prefix + ("   " if is_last else "│  ")
+        
+        # Process children
+        result = [split_str]
+        for i, child in enumerate(self):
+            child_is_last = (i == len(self) - 1)
+            result.append(child.__str__(is_last=child_is_last, prefix=child_prefix))
+        
+        return "".join(result)
 
     def run(self, data: pd.DataFrame, environ: dict = None, id: str = None, _N: int = None) -> SplitDataNode:
         """Run the split node on the provided DataFrame.
@@ -751,18 +767,33 @@ class AnalysisNode():
         self.label = label
         self.termination = termination
 
-    def __str__(self, ind: int = 0):
+    def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the analysis node.
         
         Args:
-            ind (int): Indentation level for nested display. Defaults to 0.
+            ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
+            is_last (bool): Whether this is the last child of its parent. Defaults to True.
+            prefix (str): The prefix string from parent levels. Defaults to "".
             
         Returns:
             str: Formatted representation of the analysis and its computations.
         """
-        analysis_lst = [f"{(ind + 4) * ' '}{i}: {j}\n" for i,j in self.analysis_str.items()]
-        analysis_str = (" " * (ind + 0)) + f"└- Analysis Node: {self.label}\n" + "". join(analysis_lst)
-        return analysis_str
+        # Choose connector based on position
+        connector = "└─ " if is_last else "├─ "
+        node_header = prefix + connector + f"Analysis Node: {self.label}\n"
+        
+        # Build prefix for analysis details
+        detail_prefix = prefix + ("   " if is_last else "│  ")
+        
+        # Format analysis details with box-drawing characters
+        analysis_items = list(self.analysis_str.items())
+        analysis_lines = []
+        for i, (key, value) in enumerate(analysis_items):
+            detail_is_last = (i == len(analysis_items) - 1)
+            detail_connector = "└─ " if detail_is_last else "├─ "
+            analysis_lines.append(detail_prefix + detail_connector + f"{key}: {value}\n")
+        
+        return node_header + "".join(analysis_lines)
     
     def run(self, data, environ = None, id: str = None, _N:int = None) -> DataNode:
         """Run the analysis node on the provided DataFrame.
@@ -830,18 +861,33 @@ class CrossAnalysisNode(list):
         self.ref_lvl = ref_lvl
         self.termination = termination
 
-    def __str__(self, ind: int = 0):
+    def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the cross-analysis node.
         
         Args:
-            ind (int): Indentation level for nested display. Defaults to 0.
+            ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
+            is_last (bool): Whether this is the last child of its parent. Defaults to True.
+            prefix (str): The prefix string from parent levels. Defaults to "".
             
         Returns:
             str: Formatted representation of the cross-analysis and its computations.
         """
-        analysis_lst = [f"{(ind + 4) * ' '}{i}: {j}\n" for i,j in self.analysis_str.items()]
-        analysis_str = (" " * (ind + 0)) + f"└- Cross Analysis Node: {self.label}\n" + "". join(analysis_lst)
-        return analysis_str
+        # Choose connector based on position
+        connector = "└─ " if is_last else "├─ "
+        node_header = prefix + connector + f"Cross Analysis Node: {self.label}\n"
+        
+        # Build prefix for analysis details
+        detail_prefix = prefix + ("   " if is_last else "│  ")
+        
+        # Format analysis details with box-drawing characters
+        analysis_items = list(self.analysis_str.items())
+        analysis_lines = []
+        for i, (key, value) in enumerate(analysis_items):
+            detail_is_last = (i == len(analysis_items) - 1)
+            detail_connector = "└─ " if detail_is_last else "├─ "
+            analysis_lines.append(detail_prefix + detail_connector + f"{key}: {value}\n")
+        
+        return node_header + "".join(analysis_lines)
     
     def run(self, data: dict, environ = None, id: str = None, _N:int = None) -> DataNode:
         """Run the cross-analysis node on the provided DataFrames.
