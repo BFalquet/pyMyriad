@@ -64,17 +64,33 @@ class DataNode():
         self.depth = depth
         self._N = _N
 
-    def __str__(self, ind: int = 0):
+    def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the data node.
         
         Args:
-            ind (int): Indentation level for nested display. Defaults to 0.
+            ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
+            is_last (bool): Whether this is the last child of its parent. Defaults to True.
+            prefix (str): The prefix string from parent levels. Defaults to "".
             
         Returns:
             str: Formatted representation of the node's summary statistics.
         """
-        res = [f"{' ' * (ind * 2)}  └- {k}: {str(v)}\n" for k,v in (self.summary or {}).items()]
-        return f"{' ' * (ind * 2)}  analysis: {self.label}\n" + "".join(res)
+        # Choose connector based on position
+        connector = "└─ " if is_last else "├─ "
+        node_header = prefix + connector + f"analysis: {self.label}\n"
+        
+        # Build prefix for analysis details
+        detail_prefix = prefix + ("   " if is_last else "│  ")
+        
+        # Format analysis details with box-drawing characters
+        summary_items = list((self.summary or {}).items())
+        summary_lines = []
+        for i, (key, value) in enumerate(summary_items):
+            detail_is_last = (i == len(summary_items) - 1)
+            detail_connector = "└─ " if detail_is_last else "├─ "
+            summary_lines.append(detail_prefix + detail_connector + f"{key}: {str(value)}\n")
+        
+        return node_header + "".join(summary_lines)
     
     def __flatten__(self, path = (), depth: int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = (), data:bool = False) -> pd.DataFrame:
 
@@ -128,18 +144,31 @@ class SplitDataNode(dict):
         self.split_var = split_var
         self.label = label or analysis_to_string(split_var)
 
-    def __str__(self, ind: int = 0):
+    def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the split data node.
         
         Args:
-            ind (int): Indentation level for nested display. Defaults to 0.
+            ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
+            is_last (bool): Whether this is the last child of its parent. Defaults to True.
+            prefix (str): The prefix string from parent levels. Defaults to "".
             
         Returns:
             str: Formatted representation of the split and its levels.
         """
-        res = [x.__str__(ind = ind + 1) for x in self.values()]
-        recusive_str = "".join(res)
-        return f"{' ' * (ind * 2)}Split: {self.label}\n" + recusive_str
+        # Choose connector based on position
+        connector = "└─ " if is_last else "├─ "
+        split_str = prefix + connector + f"Split: {self.label}\n"
+        
+        # Build prefix for children
+        child_prefix = prefix + ("   " if is_last else "│  ")
+        
+        # Process children
+        result = [split_str]
+        for i, child in enumerate(self.values()):
+            child_is_last = (i == len(self) - 1)
+            result.append(child.__str__(is_last=child_is_last, prefix=child_prefix))
+        
+        return "".join(result)
     
     def __flatten__(self, path = (), depth: int = 0, pivot_var = (), path_pivot = (), pivot_split = (), pivot_lvl = (), data:bool = False) -> pd.DataFrame:
 
@@ -206,19 +235,31 @@ class LvlDataNode(dict):
         self.meta = meta
         self._N = _N
 
-    def __str__(self, ind: int = 0):
+    def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the level data node.
         
         Args:
-            ind (int): Indentation level for nested display. Defaults to 0.
+            ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
+            is_last (bool): Whether this is the last child of its parent. Defaults to True.
+            prefix (str): The prefix string from parent levels. Defaults to "".
             
         Returns:
             str: Formatted representation of the level and its children.
         """
-        res = [x.__str__(ind = ind + 1) for x in self.values()]
-        recusive_str = "".join(res)
+        # Choose connector based on position
+        connector = "└─ " if is_last else "├─ "
+        level_str = prefix + connector + f"{self.split_lvl}\n"
         
-        return f"{' ' * (ind * 2)}└- {self.split_lvl}\n" + recusive_str
+        # Build prefix for children
+        child_prefix = prefix + ("   " if is_last else "│  ")
+        
+        # Process children
+        result = [level_str]
+        for i, child in enumerate(self.values()):
+            child_is_last = (i == len(self) - 1)
+            result.append(child.__str__(is_last=child_is_last, prefix=child_prefix))
+        
+        return "".join(result)
     
     def __flatten__(self, path = (), depth:int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = (), data:bool = False) -> pd.DataFrame:
         """Flatten a LvlDataNode
@@ -286,10 +327,14 @@ class DataTree(dict):
         Returns:
             str: Formatted tree structure showing splits, levels, and results.
         """
-        ind = 0
-        res = [x.__str__(ind = ind + 1) for x in self.values()]
-        recusive_str = "".join(res)
-        return "Data Tree\n" + recusive_str
+        if len(self) == 0:
+            return "Data Tree\n"
+        
+        result = ["Data Tree\n"]
+        for i, node in enumerate(self.values()):
+            is_last = (i == len(self) - 1)
+            result.append(node.__str__(is_last=is_last, prefix=""))
+        return "".join(result)
     
     def __flatten__(self, pivot:str = (), data:bool = False) -> pd.DataFrame:
         """Flatten a DataTree into a DataFrame.

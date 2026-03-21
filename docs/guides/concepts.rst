@@ -15,11 +15,12 @@ An AnalysisTree defines *how* analysis is performed. It's a hierarchical structu
 * **Analysis Node**: What computations to perform on each group
 
 .. code-block:: text
+
     Analysis Tree
-    └- Split Node gender: [df.Gender]
-        └- Analysis Node: wage analysis
-            mean_income: mean_income=lambda df: np.mean(df.Income),
-            count: count=lambda df: len(df)
+    └─ Split Node gender: [df.Gender]
+       └─ Analysis Node: wage analysis
+          ├─ mean_income: mean_income=lambda df: np.mean(df.Income),
+          └─ count: count=lambda df: len(df)
 
 
 **DataTree** - The Results
@@ -34,15 +35,15 @@ When you run an AnalysisTree on data, you get a DataTree containing:
 .. code-block:: text
 
    Data Tree
-   Split: df.Gender # SplitDataNode
-   └- F # LvlDataNode
-     analysis: wage analysis # DataNode 
-       └- mean_income: 75000.0
-       └- count: 3
-   └- M # LvlDataNode
-     analysis: wage analysis # DataNode
-       └- mean_income: 55000.0
-       └- count: 3
+   └─ Split: df.Gender
+      ├─ F
+      │  └─ analysis: wage analysis
+      │     ├─ mean_income: 75000.0
+      │     └─ count: 3
+      └─ M
+         └─ analysis: wage analysis
+            ├─ mean_income: 55000.0
+            └─ count: 3
 
 
 Tree Construction Methods
