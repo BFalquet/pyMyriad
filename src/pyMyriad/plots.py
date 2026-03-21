@@ -12,9 +12,24 @@ Helper functions:
 - plot_distribution(): Internal function for distribution plot rendering
 
 Example:
+    >>> from pyMyriad import AnalysisTree, forest_plot, distribution_plot
+    >>> 
+    >>> # Build analysis with plot-ready statistics
+    >>> tree = AnalysisTree().split_by('df.Treatment').analyze_by(
+    ...     effect=lambda df: np.mean(df.Outcome),
+    ...     ci_width=lambda df: 1.96 * np.std(df.Outcome) / np.sqrt(len(df))
+    ... )
     >>> result = tree.run(df)
+    >>> 
+    >>> # Create forest plot
     >>> forest_plot(result, x='effect', x_err='ci_width')
-    >>> distribution_plot(result, x='values', type='scatter')
+    >>> 
+    >>> # Create distribution plot
+    >>> distribution_plot(result, x='Outcome', type='scatter')
+
+See also:
+    - examples/04_plots.ipynb: Comprehensive plotting examples
+    - tabular.py: Data preparation for plotting
 """
 
 from .tabular import flatten, flatten_data

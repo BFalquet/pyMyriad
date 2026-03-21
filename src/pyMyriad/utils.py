@@ -13,6 +13,27 @@ Key functions:
 
 These utilities enable pyMyriad's flexible expression evaluation system that supports
 both string expressions and lambda functions.
+
+Expression Evaluation Examples:
+    >>> # String expression
+    >>> scope_eval("np.mean(df.Income)", df, {'np': np, 'pd': pd})
+    65000.0
+    
+    >>> # Lambda function
+    >>> scope_eval(lambda df: np.mean(df.Income), df)
+    65000.0
+    
+    >>> # Cross-level comparison
+    >>> scope_cross_eval(
+    ...     lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A),
+    ...     treatment_df,
+    ...     control_df
+    ... )
+    5.2
+
+See also:
+    - ARCHITECTURE.md: Expression evaluation system details
+    - analysis_tree.py: How expressions are used in tree construction
 """
 
 import pandas as pd

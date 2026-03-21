@@ -47,6 +47,61 @@ result = tree.run(df)
 print(result)
 ```
 
+## Architecture Overview
+
+pyMyriad uses a two-phase pattern: **construction** and **execution**.
+
+1. **Construction Phase**: Build an analysis specification using `AnalysisTree`, `SplitNode`, and `AnalysisNode`
+2. **Execution Phase**: Run the tree on data with `.run()` to get a `DataTree` with results
+
+```
+Construction → Execution → Results
+
+AnalysisTree  .run(df)→  DataTree
+├─ SplitNode          →  ├─ SplitDataNode
+│  └─ AnalysisNode    →  │  └─ DataNode
+└─ AnalysisNode       →  └─ DataNode
+```
+
+**Key Modules**:
+- [`analysis_tree.py`](src/pyMyriad/analysis_tree.py) - Tree construction (AnalysisTree, SplitNode, AnalysisNode)
+- [`data_tree.py`](src/pyMyriad/data_tree.py) - Result structures (DataTree, SplitDataNode, DataNode)
+- [`utils.py`](src/pyMyriad/utils.py) - Expression evaluation (scope_eval, scope_cross_eval)
+- [`listing.py`](src/pyMyriad/listing.py) - Table generation (simple_table, gt_table)
+- [`plots.py`](src/pyMyriad/plots.py) - Visualization (forest_plot, distribution_plot)
+- [`tabular.py`](src/pyMyriad/tabular.py) - Data flattening and formatting
+
+📖 **For detailed architecture documentation, see [ARCHITECTURE.md](ARCHITECTURE.md)**
+
+## Project Structure
+
+```
+pyMyriade/
+├── src/pyMyriad/          # Main package source code
+│   ├── __init__.py        # Package exports
+│   ├── analysis_tree.py   # Tree construction logic
+│   ├── data_tree.py       # Result data structures
+│   ├── utils.py           # Expression evaluation utilities
+│   ├── listing.py         # Table generation functions
+│   ├── plots.py           # Plotting functions
+│   ├── tabular.py         # Data flattening and formatting
+│   └── cli.py             # Command-line interface
+├── tests/                 # Test suite
+│   ├── test_analysis_tree.py
+│   ├── test_run.py
+│   ├── test_tree_construction.py
+│   └── ...
+├── docs/                  # Sphinx documentation
+│   ├── guides/            # User guides and tutorials
+│   ├── api/               # API reference
+│   └── examples/          # Example notebooks
+├── examples/
+│   └── notebooks/         # Jupyter notebook tutorials
+├── ARCHITECTURE.md        # Architecture documentation for AI agents
+├── README.md              # This file
+└── pyproject.toml         # Project configuration
+```
+
 ## Documentation
 
 Full documentation is available in the `docs/` directory. To build the documentation locally:

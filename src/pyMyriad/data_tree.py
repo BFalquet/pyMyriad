@@ -5,16 +5,31 @@ on data. The tree structure mirrors the AnalysisTree but contains actual compute
 values instead of analysis specifications.
 
 The main classes are:
-- DataTree: The root container for analysis results
-- SplitDataNode: Results organized by split groups
-- LvlDataNode: Results for a specific level within a split
+- DataTree: The root container for analysis results (subclass of dict)
+- SplitDataNode: Results organized by split groups (subclass of dict)
+- LvlDataNode: Results for a specific level within a split (subclass of dict)
 - DataNode: Leaf node containing actual computed values
 
 DataTree objects are typically created by running an AnalysisTree on data:
     >>> result = analysis_tree.run(df)
     >>> isinstance(result, DataTree)  # True
 
-DataTree objects can be flattened to pandas DataFrames for export and visualization.
+DataTree objects can be flattened to pandas DataFrames for export and visualization:
+    >>> from pyMyriad import simple_table
+    >>> table = simple_table(result)
+
+Tree Structure Example:
+    DataTree
+    └─ 'df.Gender' -> SplitDataNode
+       ├─ 'Male' -> LvlDataNode
+       │  └─ 'analysis' -> DataNode (summary={'mean': 55000, 'count': 3})
+       └─ 'Female' -> LvlDataNode
+          └─ 'analysis' -> DataNode (summary={'mean': 75000, 'count': 3})
+
+See also:
+    - ARCHITECTURE.md: Detailed architectural overview
+    - analysis_tree.py: Tree construction classes
+    - listing.py: Table generation from DataTree
 """
 
 import pandas as pd
