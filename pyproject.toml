@@ -1,9 +1,20 @@
 [project]
 name = "pymyriad"
 version = "0.1.0"
-description = "Add your description here"
+description = "Data analysis as a tree"
 readme = "README.md"
+license = "Apache-2.0"
+authors = [
+    {name = "B. Falquet", email = "b.falquet@gmail.com"},
+]
 requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = [
     "click>=8.2.1",
     "numpy>=1.22.0",
@@ -11,6 +22,11 @@ dependencies = [
     "plotly>=6.3.0",
     "great-tables>=0.14.0",
 ]
+
+[project.urls]
+"Homepage" = "https://github.com/BFalquet/pyMyriad/"
+"Repository" = "https://github.com/BFalquet/pyMyriad/"
+"Bug Tracker" = "https://github.com/BFalquet/pyMyriad/issues"
 
 [dependency-groups]
 dev = [
@@ -28,9 +44,6 @@ docs = [
     "nbsphinx>=0.9.0",
     "ipykernel>=6.0.0",
 ]
-
-[project.scripts]
-foocli = "pyMyriad.cli:main"
 
 [tool.pytest.ini_options]
 markers = [
