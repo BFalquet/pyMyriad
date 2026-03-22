@@ -40,3 +40,25 @@ def test_split_data_node():
     assert len(sdn) == 1
     assert "T" in sdn
     assert str(sdn) == '└─ Split: Var1\n   └─ Level1\n      ├─ analysis: MyData1\n      │  └─ mean: 2\n      └─ analysis: MyData2\n         └─ mean: 5\n'
+
+
+def test_lvl_data_node_with_N_list():
+    """LvlDataNode stores _N as a list when provided."""
+    dn = DataNode(data=[1, 2, 3], summary={"mean": 2}, label="MyData", depth=1)
+    ldn = LvlDataNode(dn=dn, split_lvl="Level1", _N=[3, 2])
+    assert ldn._N == [3, 2]
+
+
+def test_data_node_with_N_list():
+    """DataNode stores _N as a list when provided."""
+    dn = DataNode(data=[1, 2], summary={"n": 2}, label="L", _N=[5, 3])
+    assert dn._N == [5, 3]
+
+
+def test_data_tree_with_N_list():
+    """DataTree stores _N as a list when provided."""
+    dn = DataNode(data=[1], summary={"n": 1}, label="L")
+    ldn = LvlDataNode(dn=dn, split_lvl="A")
+    sdn = SplitDataNode(split_var="Var", A=ldn)
+    dt = DataTree(_N=[4], Var=sdn)
+    assert dt._N == [4]

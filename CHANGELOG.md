@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-03-22
 
 ### Added
+- `denom` parameter on `AnalysisTree` for specifying the column(s) used to count unique observations at each tree level. When set, `_N` is a cumulative list of unique counts from the root to the current node, enabling proportion and rate computations
+- Lambda dispatch by parameter name: `lambda df` (current group), `lambda _N` (denominator list), or `lambda df, _N` (both) — all automatically supported via `inspect.signature`
+- String expressions now receive `_N` in their evaluation context when `denom` is set (e.g., `"_N[-1] / _N[0]"`)
+- Multi-column denominator support: `denom=["PatientID", "Visit"]` counts unique row combinations via `drop_duplicates`
+- Deprecation warning for the legacy `id` parameter on `AnalysisTree` (replaced by `denom`)
 - Cross-analysis functionality for comparing multiple analysis results
 - Hierarchical column display in listing tables - path now split into separate `Level_0`, `Level_1`, etc. columns for easier filtering and sorting
 - New `simple_table()` function for lightweight DataFrame output without requiring the great-tables dependency

@@ -44,10 +44,12 @@ class DataNode():
         summary (dict): A dictionary containing summary information about the node.
         label (str): A string label identifying the node.
         depth (int): The depth of the node in the tree structure.
-        _N (int): The number of unique identifiers in the data, if applicable.
+        _N (list | None): Cumulative unique-count list from root to current level when
+            a denominator is set on the :class:`AnalysisTree`. ``None`` when no denominator
+            is configured.
     """
 
-    def __init__(self, data = None, summary: dict = None, label: str = str(), depth: int = 0, _N: int = None):
+    def __init__(self, data = None, summary: dict = None, label: str = str(), depth: int = 0, _N: list | None = None):
         """Initializes the DataNode object.
         Args:
             data: The data associated with this node. Can be any type. Defaults to None.
@@ -208,10 +210,12 @@ class LvlDataNode(dict):
     Attributes:
         split_lvl (str): The identifier for the split level of this node.
         meta (any): Metadata associated with this node.
-        _N (int): The number of unique identifiers in the data, if applicable.
+        _N (list | None): Cumulative unique-count list from root to current level when
+            a denominator is set on the :class:`AnalysisTree`. ``None`` when no denominator
+            is configured.
     """
 
-    def __init__(self, split_lvl: str, meta: any = (), _N: int = None, **kwargs):
+    def __init__(self, split_lvl: str, meta: any = (), _N: list | None = None, **kwargs):
         """Initializes the LvlDataNode object.
         Args:
             split_lvl (str): The identifier for the split level of this node.
@@ -304,9 +308,11 @@ class DataTree(dict):
     """A subclass of dictionnary that represents a data tree.
     
     Attributes:
-        _N (int): The number of unique identifiers in the data, if applicable.
+        _N (list | None): Cumulative unique-count list; a single-element list ``[n_root]``
+            when a denominator is set on the :class:`AnalysisTree`. ``None`` when no
+            denominator is configured.
     """
-    def __init__(self, _N: int = None, **kwargs):
+    def __init__(self, _N: list | None = None, **kwargs):
         """Initializes the DataTree object.
         Args:
             _N (int, optional): The number of unique identifiers in the data, if applicable. Defaults to None.

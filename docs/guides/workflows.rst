@@ -180,6 +180,70 @@ Generate formatted HTML tables:
    table = gt_table(result, title="Analysis Results")
    table.save('output.html')
 
+Proportion Analysis with a Denominator
+---------------------------------------
+
+When observations are not uniquely identified by rows (e.g., repeated measurements per
+patient), use ``denom`` to count unique entities and compute proportions relative to the
+full dataset or an ancestor node.
+
+.. code-block:: python
+
+   import pandas as pd
+   import numpy as np
+   from pyMyriad import AnalysisTree, simple_table
+
+   # Patient data — patient C has two rows (two visits)
+   df = pd.DataFrame({
+       "PatientID": ["A", "B", "C", "C"],
+       "Gender":    ["M", "F", "F", "F"],
+       "Country":   ["US", "US", "UK", "UK"],
+       "Age":       [45, 32, 28, 28],
+       "Income":    [48000, 52000, 55000, 58000],
+   })
+
+   # denom="PatientID" → unique patient counts drive _N, not row counts
+   atree = (AnalysisTree(denom="PatientID")
+       .split_by("df.Gender")
+       .analyze_by(
+           mean_income=lambda df: np.mean(df.Income),
+           n_patients=lambda _N: _N[-1],          # unique patients in this group
+           prop=lambda _N: _N[-1] / _N[0],        # proportion of total unique patients
+       ))
+
+   result = atree.run(df)
+   # result._N                   == [3]     — 3 unique patients overall
+   # result["df.Gender"]["F"]._N == [3, 2]  — 2 of 3 unique patients are female
+
+   simple_table(result)
+
+For multi-level proportions (e.g. proportion within Gender within Country), nest the
+splits and use ``_N`` indices accordingly:
+
+.. code-block:: python
+
+   atree2 = (AnalysisTree(denom="PatientID")
+       .split_by("df.Gender")
+       .split_by("df.Country")
+       .analyze_by(
+           n=lambda _N: _N[-1],
+           prop_vs_gender=lambda _N: _N[-1] / _N[-2],   # proportion within gender
+           prop_vs_total=lambda _N: _N[-1] / _N[0],     # proportion vs full dataset
+       ))
+
+   result2 = atree2.run(df)
+
+Multi-column denominator (unique patient-visit combinations):
+
+.. code-block:: python
+
+   atree3 = (AnalysisTree(denom=["PatientID", "Visit"])
+       .split_by("df.Gender")
+       .analyze_by(
+           n_visits=lambda _N: _N[-1],
+           prop=lambda _N: _N[-1] / _N[0],
+       ))
+
 See Also
 --------
 

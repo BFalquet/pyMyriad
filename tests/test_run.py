@@ -60,3 +60,114 @@ def test_run_eval_in_split():
     assert list(res.keys()) == ["gp1-gp2", "Custom"]
     assert len(res["gp1-gp2"]) == 2
     assert len(res["Custom"].summary) == 2
+
+
+# --- denom / _N tests ---
+
+def test_denom_N_is_list_at_root():
+    """_N at root is a single-element list when denom is set."""
+    df = pd.DataFrame({
+        "ID":     ["A", "B", "C", "C"],
+        "Gender": ["M", "F", "F", "F"],
+        "Income": [40000.0, 55000.0, 60000.0, 62000.0],
+    })
+    a_node = AnalysisNode(n=lambda df: len(df))
+    a_tree = AnalysisTree(a_node, denom="ID")
+    result = a_tree.run(df)
+    assert result._N == [3]  # 3 unique IDs: A, B, C
+
+
+def test_denom_N_accumulates_across_split():
+    """_N grows by one element at each split level."""
+    df = pd.DataFrame({
+        "ID":     ["A", "B", "C", "C"],
+        "Gender": ["M", "F", "F", "F"],
+        "Income": [40000.0, 55000.0, 60000.0, 62000.0],
+    })
+    a_tree = (
+        AnalysisTree(denom="ID")
+        .split_by("df.Gender")
+        .analyze_by(mean_income=lambda df: np.mean(df.Income))
+    )
+    result = a_tree.run(df)
+    # Root _N: 3 unique IDs
+    assert result._N == [3]
+    split_node = result["df.Gender"]
+    # F group: IDs B, C => 2 unique
+    assert split_node["F"]._N == [3, 2]
+    # M group: ID A => 1 unique
+    assert split_node["M"]._N == [3, 1]
+
+
+def test_denom_lambda_N_only():
+    """Lambda that only takes _N receives the count list."""
+    df = pd.DataFrame({
+        "ID":     ["A", "B", "C", "C"],
+        "Gender": ["M", "F", "F", "F"],
+        "Income": [40000.0, 55000.0, 60000.0, 62000.0],
+    })
+    a_tree = (
+        AnalysisTree(denom="ID")
+        .split_by("df.Gender")
+        .analyze_by(prop=lambda _N: _N[-1] / _N[0])
+    )
+    result = a_tree.run(df)
+    assert abs(result["df.Gender"]["F"]["0"].summary["prop"] - 2 / 3) < 1e-9
+    assert abs(result["df.Gender"]["M"]["0"].summary["prop"] - 1 / 3) < 1e-9
+
+
+def test_denom_lambda_df_and_N():
+    """Lambda with both df and _N receives both arguments."""
+    df = pd.DataFrame({
+        "ID":     ["A", "B", "C", "C"],
+        "Gender": ["M", "F", "F", "F"],
+        "Income": [40000.0, 55000.0, 60000.0, 62000.0],
+    })
+    a_tree = (
+        AnalysisTree(denom="ID")
+        .split_by("df.Gender")
+        .analyze_by(rows_per_id=lambda df, _N: len(df) / _N[-1])
+    )
+    result = a_tree.run(df)
+    # F group: 3 rows / 2 unique IDs = 1.5
+    assert abs(result["df.Gender"]["F"]["0"].summary["rows_per_id"] - 1.5) < 1e-9
+
+
+def test_denom_string_expr_uses_N():
+    """String expressions can reference _N via eval context."""
+    df = pd.DataFrame({
+        "ID":     ["A", "B", "C", "C"],
+        "Gender": ["M", "F", "F", "F"],
+        "Income": [40000.0, 55000.0, 60000.0, 62000.0],
+    })
+    a_tree = (
+        AnalysisTree(denom="ID")
+        .split_by("df.Gender")
+        .analyze_by(prop="_N[-1] / _N[0]")
+    )
+    result = a_tree.run(df)
+    assert abs(result["df.Gender"]["F"]["0"].summary["prop"] - 2 / 3) < 1e-9
+
+
+def test_denom_none_backward_compat():
+    """Without denom, _N is None on all nodes (backward compat)."""
+    df = pd.DataFrame({"A": [1, 2, 3], "B": [10, 20, 30]})
+    a_tree = AnalysisTree().split_by("df.A > 1").analyze_by(n=lambda df: len(df))
+    result = a_tree.run(df)
+    assert result._N is None
+    for lvl_node in result["df.A > 1"].values():
+        assert lvl_node._N is None
+
+
+def test_denom_list_of_columns():
+    """denom as a list of columns counts unique row combinations."""
+    df = pd.DataFrame({
+        "PatientID": ["P1", "P1", "P2", "P3"],
+        "Visit":     [1,    2,    1,    1   ],
+        "Value":     [10,   20,   30,   40  ],
+    })
+    a_node = AnalysisNode(n=lambda df: len(df))
+    a_tree = AnalysisTree(a_node, denom=["PatientID", "Visit"])
+    result = a_tree.run(df)
+    # 3 unique (PatientID, Visit) combinations: (P1,1), (P1,2), (P2,1), (P3,1) => 4
+    assert result._N == [4]

@@ -31,6 +31,7 @@ See also:
 import sys
 import inspect
 import ast
+import warnings
 import pandas as pd
 from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
 from .utils import scope_eval, get_top_globals, analysis_to_string, count_or_length, scope_cross_eval
@@ -59,11 +60,16 @@ class AnalysisTree(list):
     # Class-level default environment for expression evaluation
     _default_environ = None
     
-    def __init__(self, *args, id:str = None):
+    def __init__(self, *args, denom: str | list[str] | None = None, id: str = None):
         """ Initializes the AnalysisTree object.
         Args:
             *args: Variable length argument list containing SplitNode or AnalysisNode instances.
-            id (str, optional): The name of the column whose unique counts identifies the number of entities. Defaults to None.
+            denom (str or list of str, optional): The column name(s) used to count unique
+                observations at each level of the tree. When set, analysis expressions receive
+                ``_N`` — a list of cumulative unique counts from root to the current level.
+                If a list of column names is provided, unique row combinations are counted.
+                Defaults to None.
+            id (str, optional): Deprecated. Use ``denom`` instead.
         Raises:
             AssertionError: If any element in args is not an instance of SplitNode or AnalysisNode.
         """
@@ -71,9 +77,17 @@ class AnalysisTree(list):
         acceptable_lst = [isinstance(x, (SplitNode, AnalysisNode)) for x in args] 
         assert all(acceptable_lst), "Every element passed to AnalysisTree() must be a SplitNode or an AnalysisNode"
 
+        if id is not None and denom is None:
+            warnings.warn(
+                "The 'id' parameter is deprecated. Use 'denom' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            denom = id
+
         super().__init__(args)
         self.att = ()
-        self.id = id
+        self.denom = denom
 
     def __str__(self):
         """Return a string representation of the analysis tree.
@@ -114,10 +128,10 @@ class AnalysisTree(list):
             else:
                 environ = get_top_globals()
 
-        _N = count_or_length(data, self.id)
+        _N = [count_or_length(data, self.denom)] if self.denom is not None else None
 
         # Recursively apply run.
-        res_lst = [elements.run(data, environ = environ, id = self.id) for elements in self]
+        res_lst = [elements.run(data, environ = environ, denom = self.denom, _N = _N) for elements in self]
         
         res_names = []
         for x in res_lst:
@@ -257,13 +271,30 @@ class AnalysisTree(list):
             *args: Additional positional arguments representing analysis expressions.
             label (str, optional): The label for the analysis node. Defaults to an empty string.
             termination (bool, optional): Indicates if this node is a termination node. Defaults to True.
-            **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
+            **kwargs: Keyword arguments where keys are analysis names and values are their
+                corresponding expressions. Each value can be a string expression or a callable.
+                Callables are dispatched by parameter name:
+
+                - ``lambda df: ...`` — receives the current-level DataFrame.
+                - ``lambda _N: ...`` — receives the denominator count list
+                  (requires ``denom`` to be set on the :class:`AnalysisTree`).
+                - ``lambda df, _N: ...`` — receives both the DataFrame and the count list.
+
+                When ``denom`` is set, ``_N`` is a list of cumulative unique counts from root
+                to the current level: ``_N[0]`` is the full-dataset count and ``_N[-1]`` is
+                the current-level count.
         Returns:
             AnalysisTree: The modified AnalysisTree with the new analysis node added.
         Examples:
             >>> a_tree = AnalysisTree()
-            >>> a_tree = a_tree.analyze_by(m = "np.mean(A)", s = "np.std(B)")
-            >>> a_tree = a_tree.analyze_by("np.mean(A)", "np.std(B)", label = "Summary Stats")
+            >>> a_tree = a_tree.analyze_by(mean=lambda df: np.mean(df.A), std=lambda df: np.std(df.B))
+            >>> # Using _N for proportions (requires denom to be set on the tree):
+            >>> a_tree = (AnalysisTree(denom="ID")
+            ...     .split_by("df.Gender")
+            ...     .analyze_by(
+            ...         mean_income=lambda df: np.mean(df.Income),
+            ...         prop=lambda _N: _N[-1] / _N[0],
+            ...     ))
         """
         is_split_node = [isinstance(x, SplitNode) for x in self]
 
@@ -449,12 +480,12 @@ class SplitNode(list):
         
         return "".join(result)
 
-    def run(self, data: pd.DataFrame, environ: dict = None, id: str = None, _N: int = None) -> SplitDataNode:
+    def run(self, data: pd.DataFrame, environ: dict = None, denom=None, _N=None) -> SplitDataNode:
         """Run the split node on the provided DataFrame.
         Args:
             data (pd.DataFrame): The DataFrame to split.
             environ (dict, optional): A dictionary representing the environment in which to evaluate expressions. Defaults to None.
-            id (str, optional): The name of the column whose unique counts identifies the number of entities. Defaults to None.
+            denom (str or list of str, optional): The column name(s) used as the denominator for unique counts. Defaults to None.
         Returns:
             SplitDataNode: The resulting SplitDataNode after running the split node.
         Examples:
@@ -496,7 +527,11 @@ class SplitNode(list):
         not_cross_analysis_node = {nn: element for nn, element in enumerate(self) if not isinstance(element, CrossAnalysisNode)}
         cross_analysis_node = {nn: element for nn, element in enumerate(self) if isinstance(element, CrossAnalysisNode)}
 
-        res_dic = {str(n): LvlDataNode(split_lvl = str(n), _N = count_or_length(data, id), **{(str(element.label) or str(nn)): element.run(data, environ = environ, id = id, _N = None) for nn, element in not_cross_analysis_node.items()}) for n, data in split_dfs.items()}
+        res_dic = {}
+        for n, subset in split_dfs.items():
+            _N_new = _N + [count_or_length(subset, denom)] if denom is not None else None
+            child_results = {(str(element.label) or str(nn)): element.run(subset, environ=environ, denom=denom, _N=_N_new) for nn, element in not_cross_analysis_node.items()}
+            res_dic[str(n)] = LvlDataNode(split_lvl=str(n), _N=_N_new, **child_results)
 
         # Handle CrossAnalysisNode separately
         if (len(cross_analysis_node) > 0) and (len(split_dfs) > 1):
@@ -517,7 +552,8 @@ class SplitNode(list):
                         var_df = split_dfs[var_lvl]
                         cross_data = { "df": var_df, "ref_df": ref_df }
                         cross_label = f"{var_lvl}_vs_{ref_lvl}"
-                        res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = count_or_length(var_df, id), **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, id = id, _N = None) for nn, element in cross_analysis_node.items()})
+                        _N_cross = _N + [count_or_length(var_df, denom)] if denom is not None else None
+                        res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = _N_cross, **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, denom = denom, _N = _N_cross) for nn, element in cross_analysis_node.items()})
                 
                 # If no reference level is specified, compare every level with each other.
                 else:
@@ -528,7 +564,8 @@ class SplitNode(list):
                             var_df = split_dfs[df_keys[var_lvl_i]]
                             cross_data = { "df": var_df, "ref_df": ref_df }
                             cross_label = f"{df_keys[var_lvl_i]}_vs_{df_keys[ref_lvl_i]}"
-                            res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = count_or_length(var_df, id), **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, id = id, _N = None) for nn, element in cross_analysis_node.items()})
+                            _N_cross = _N + [count_or_length(var_df, denom)] if denom is not None else None
+                            res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = _N_cross, **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, denom = denom, _N = _N_cross) for nn, element in cross_analysis_node.items()})
 
 
         split_var = self.expr or "::".join(self.kwexpr.keys())
@@ -795,11 +832,12 @@ class AnalysisNode():
         
         return node_header + "".join(analysis_lines)
     
-    def run(self, data, environ = None, id: str = None, _N:int = None) -> DataNode:
+    def run(self, data, environ = None, denom=None, _N=None) -> DataNode:
         """Run the analysis node on the provided DataFrame.
         Args:
             data (pd.DataFrame): The DataFrame to analyze.
             environ (dict, optional): A dictionary representing the environment in which to evaluate expressions. Defaults to None.
+            _N (list or None): Cumulative denominator count list passed from the parent split. Defaults to None.
         Returns:
             DataNode: The resulting DataNode after running the analysis node.
         Examples:
@@ -813,7 +851,7 @@ class AnalysisNode():
             >>> assert res.summary == {"m": np.float64(15), "s": np.float64(0)}
         """
 
-        res = scope_eval(df = data, extra_context = environ, **self.analysis)
+        res = scope_eval(df = data, extra_context = environ, _N = _N, **self.analysis)
         return DataNode(data = data, summary = res, label = self.label, depth = 0, _N = _N)
 
 #endregion
@@ -889,15 +927,16 @@ class CrossAnalysisNode(list):
         
         return node_header + "".join(analysis_lines)
     
-    def run(self, data: dict, environ = None, id: str = None, _N:int = None) -> DataNode:
+    def run(self, data: dict, environ = None, denom=None, _N=None) -> DataNode:
         """Run the cross-analysis node on the provided DataFrames.
         Args:
             data (dict): A dictionary containing two DataFrames to analyze. Keys should be "df" and "ref_df".
             environ (dict, optional): A dictionary representing the environment in which to evaluate expressions. Defaults to None.
+            _N (list or None): Cumulative denominator count list passed from the parent split. Defaults to None.
         Returns:
             DataNode: The resulting DataNode after running the cross-analysis node.
         """
 
-        res = scope_cross_eval(df = data["df"], ref_df = data["ref_df"], extra_context = environ, **self.analysis)
+        res = scope_cross_eval(df = data["df"], ref_df = data["ref_df"], extra_context = environ, _N = _N, **self.analysis)
         return DataNode(data = data["df"], summary = res, label = self.label, depth = 0, _N = _N) # TODO: do we need another class for cross data node?
     
