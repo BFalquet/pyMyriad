@@ -142,7 +142,9 @@ def forest_plot(dtree, x:str = "x", x_err:str = "err", col:str = (), type:str = 
             ax.set_ylabel("")
 
     plt.subplots_adjust(wspace=0.2)
-    plt.show()
+    if show:
+        plt.show()
+    return g
 
 
 def plot_1d(data, type:str = "forest", x:str = "x", x_err:str = "err", **kwargs):
