@@ -193,6 +193,67 @@ Set a default environment to avoid repeated configuration:
    AnalysisTree.set_default_environ({'np': np, 'pd': pd})
 
 
+Denominator and Proportions
+----------------------------
+
+The ``denom`` parameter on :class:`AnalysisTree` enables proportion and rate computations
+by tracking the number of unique observations at each level of the tree.
+
+When ``denom`` is set, the unique-entity count is computed at each node and accumulated
+into a list ``_N`` that grows as the tree descends:
+
+* ``_N[0]`` — unique count at the root (full dataset)
+* ``_N[-1]`` — unique count at the current node (local group)
+
+.. code-block:: python
+
+   df = pd.DataFrame({
+       "ID":     ["A", "B", "C", "C"],   # C appears twice → 3 unique patients
+       "Gender": ["M", "F", "F", "F"],
+       "Income": [48000, 52000, 55000, 58000],
+   })
+
+   tree = (AnalysisTree(denom="ID")
+       .split_by("df.Gender")
+       .analyze_by(
+           mean_income=lambda df: np.mean(df.Income),
+           prop=lambda _N: _N[-1] / _N[0],   # proportion of unique patients in this group
+       ))
+
+   result = tree.run(df)
+   # result._N                      == [3]     — 3 unique IDs in the full dataset
+   # result["df.Gender"]["F"]._N    == [3, 2]  — 2 of those 3 unique IDs are female
+
+The ``denom`` parameter accepts:
+
+* A column name (``str``): counts unique values — ``denom="PatientID"``
+* A list of column names (``list[str]``): counts unique row combinations — ``denom=["PatientID", "Visit"]``
+* ``None`` (default): denominator counting is disabled and ``_N`` is ``None``
+
+**Accessing** ``_N`` **in expressions**
+
+Analysis lambdas and string expressions receive ``_N`` based on their parameter names:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Signature
+     - Arguments received
+   * - ``lambda df: ...``
+     - Current group DataFrame
+   * - ``lambda _N: ...``
+     - Denominator list ``_N``
+   * - ``lambda df, _N: ...``
+     - Both DataFrame and list
+   * - ``"_N[-1] / _N[0]"`` (string)
+     - ``_N`` injected into the ``eval`` context
+
+.. note::
+
+   If ``denom`` is not set, ``_N`` is ``None``. Lambdas that only accept ``_N``
+   will receive ``None``, so guard with ``if _N is not None`` when ``denom`` is optional.
+
 
 Data Export and Visualization
 ------------------------------

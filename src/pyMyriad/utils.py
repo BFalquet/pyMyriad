@@ -102,7 +102,7 @@ def _inject_default_imports(ctx: dict, warn: bool = True) -> dict:
     return ctx
 
 
-def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, **kwargs):
+def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, _N=None, **kwargs):
     """
     Evaluate expressions or execute functions in the context of a DataFrame and optional additional context.
     This function allows you to evaluate multiple expressions or execute functions where the variables can be
@@ -144,11 +144,18 @@ def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, **kwargs):
     results = {}
     for name, expr_or_func in kwargs.items():
         if callable(expr_or_func):
-            # Execute function with DataFrame as argument
-            results[name] = expr_or_func(df)
+            params = list(inspect.signature(expr_or_func).parameters.keys())
+            has_df = 'df' in params
+            has_N = '_N' in params
+            if has_df and has_N:
+                results[name] = expr_or_func(df=df, _N=_N)
+            elif has_N:
+                results[name] = expr_or_func(_N)
+            else:
+                results[name] = expr_or_func(df)
         else:
-            # Treat as string expression (original behavior)
-            results[name] = eval(expr_or_func, ctx, {"df": df})
+            # Treat as string expression
+            results[name] = eval(expr_or_func, ctx, {"df": df, "_N": _N})
 
     return results
 
@@ -220,12 +227,14 @@ def analysis_to_string(analysis):
             return(f"<function>")
     return str(analysis)
 
-def count_or_length(data: pd.DataFrame, id: str) -> int:
-    """Count the number of unique entities in the DataFrame based on the specified id column.
+def count_or_length(data: pd.DataFrame, id: str | list[str] | None) -> int:
+    """Count the number of unique entities in the DataFrame based on the specified id column(s).
     
     Args:
         data (pd.DataFrame): The DataFrame to analyze.
-        id (str): The name of the column whose unique counts identifies the number of entities.
+        id (str, list of str, or None): The column name(s) used to count unique entities.
+            If None, returns the number of rows. If a list, counts unique row combinations
+            across those columns.
     Returns:
         int: The number of unique entities in the DataFrame.
     Examples:
@@ -234,13 +243,16 @@ def count_or_length(data: pd.DataFrame, id: str) -> int:
         ...     "value": [10, 20, 10, 30]
         ... })
         >>> count_or_length(df, "id")  # Returns: 3
+        >>> count_or_length(df, ["id", "value"])  # Returns: 3
     """
     if id is None:
         return len(data)
+    elif isinstance(id, list):
+        return len(data.drop_duplicates(subset=id))
     else:
         return data[id].nunique()
 
-def scope_cross_eval(df: pd.DataFrame = None, ref_df:pd.DataFrame = None, extra_context: dict = None, **kwargs):
+def scope_cross_eval(df: pd.DataFrame = None, ref_df: pd.DataFrame = None, extra_context: dict = None, _N=None, **kwargs):
     """
     Evaluate expressions or execute functions comparing two DataFrames (df and ref_df).
     This function allows you to evaluate expressions or execute functions for cross-analysis,
@@ -283,10 +295,22 @@ def scope_cross_eval(df: pd.DataFrame = None, ref_df:pd.DataFrame = None, extra_
     results = {}
     for name, expr_or_func in kwargs.items():
         if callable(expr_or_func):
-            # Execute function with DataFrame as argument
-            results[name] = expr_or_func(df, ref_df)
+            params = list(inspect.signature(expr_or_func).parameters.keys())
+            has_df = 'df' in params
+            has_ref_df = 'ref_df' in params
+            has_N = '_N' in params
+            if has_N:
+                call_kwargs = {}
+                if has_df:
+                    call_kwargs['df'] = df
+                if has_ref_df:
+                    call_kwargs['ref_df'] = ref_df
+                call_kwargs['_N'] = _N
+                results[name] = expr_or_func(**call_kwargs)
+            else:
+                results[name] = expr_or_func(df, ref_df)
         else:
-            # Treat as string expression (original behavior)
-            results[name] = eval(expr_or_func, ctx, {"df": df, "ref_df": ref_df})
+            # Treat as string expression
+            results[name] = eval(expr_or_func, ctx, {"df": df, "ref_df": ref_df, "_N": _N})
 
     return results

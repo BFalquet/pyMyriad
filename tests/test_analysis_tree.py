@@ -323,3 +323,35 @@ def test_scope_cross_eval():
     
     assert 'sum_diff' in result_func
     assert result_func['sum_diff'] == 30  # (60) - (30) = 30
+
+
+# --- denom parameter tests ---
+
+def test_analysis_tree_denom_str():
+    """AnalysisTree stores denom as self.denom when given a string."""
+    tree = AnalysisTree(denom="ID")
+    assert tree.denom == "ID"
+
+
+def test_analysis_tree_denom_list():
+    """AnalysisTree stores denom as self.denom when given a list."""
+    tree = AnalysisTree(denom=["PatientID", "Visit"])
+    assert tree.denom == ["PatientID", "Visit"]
+
+
+def test_analysis_tree_denom_none():
+    """AnalysisTree.denom is None by default."""
+    tree = AnalysisTree()
+    assert tree.denom is None
+
+
+def test_analysis_tree_id_deprecated():
+    """Passing id= emits DeprecationWarning and sets self.denom."""
+    import warnings
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        tree = AnalysisTree(id="ID")
+    assert len(w) == 1
+    assert issubclass(w[0].category, DeprecationWarning)
+    assert "denom" in str(w[0].message).lower()
+    assert tree.denom == "ID"
