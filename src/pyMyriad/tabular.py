@@ -33,7 +33,7 @@ See also:
     - listing.py: User-facing table generation functions
 """
 
-from .data_tree import DataNode, SplitDataNode, LvlDataNode, DataTree
+from .data_tree import DataNode, SplitDataNode, DataTree
 import pandas as pd
 
 def tabulate(dtree: DataTree, unnest: bool = False, pivot: str = ()) -> pd.DataFrame:

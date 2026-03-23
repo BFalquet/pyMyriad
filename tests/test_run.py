@@ -1,5 +1,4 @@
-from pyMyriad import *
-from pyMyriad.utils import get_top_globals
+from pyMyriad import AnalysisTree, SplitNode, AnalysisNode, DataTree
 import pandas as pd
 import numpy as np
 from importlib import import_module

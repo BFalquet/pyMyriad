@@ -40,7 +40,6 @@ import pandas as pd
 import inspect
 import ast
 import warnings
-from typing import Callable, Union, Any
 
 
 # Module-level default imports for expression evaluation
@@ -223,8 +222,8 @@ def analysis_to_string(analysis):
             # Parse and extract just the lambda expression
             tree = ast.parse(source)
             return ast.get_source_segment(source, tree.body[0]).strip()
-        except Exception as e:
-            return(f"<function>")
+        except Exception:
+            return "<function>"
     return str(analysis)
 
 def count_or_length(data: pd.DataFrame, id: str | list[str] | None) -> int:

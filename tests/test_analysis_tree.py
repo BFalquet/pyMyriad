@@ -101,8 +101,8 @@ def test_analysis_node_with_functions():
 def test_analysis_node_with_positional_functions():
     """Test AnalysisNode with positional function arguments"""
     # This should work but convert to named functions
-    func1 = lambda df: np.mean(df.A)
-    func2 = lambda df: np.std(df.B)
+    def func1(df): return np.mean(df.A)
+    def func2(df): return np.std(df.B)
     
     node = AnalysisNode(func1, func2)
     assert len(node.analysis) == 2

@@ -1,10 +1,8 @@
-import pytest
-from pyMyriad.analysis_tree import AnalysisTree, SplitNode, AnalysisNode
+from pyMyriad.analysis_tree import AnalysisTree
 from pyMyriad.plots import forest_plot
 from pyMyriad.tabular import flatten
 
 import pandas as pd
-import numpy as np
 from importlib import import_module
 from contextlib import contextmanager
 

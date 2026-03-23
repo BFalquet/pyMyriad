@@ -137,7 +137,7 @@ def test_simple_tree_small_dataset(small_dataset):
     result, duration, peak_memory = benchmark(tree.run, small_dataset)
     
     print(f"\n{'='*60}")
-    print(f"Simple Tree + Small Dataset (1K rows)")
+    print("Simple Tree + Small Dataset (1K rows)")
     print(f"{'='*60}")
     print(f"Duration: {format_duration(duration)}")
     print(f"Peak Memory: {format_memory(peak_memory)}")
@@ -167,7 +167,7 @@ def test_simple_tree_large_dataset(large_dataset):
     result, duration, peak_memory = benchmark(tree.run, large_dataset)
     
     print(f"\n{'='*60}")
-    print(f"Simple Tree + Large Dataset (100K rows)")
+    print("Simple Tree + Large Dataset (100K rows)")
     print(f"{'='*60}")
     print(f"Duration: {format_duration(duration)}")
     print(f"Peak Memory: {format_memory(peak_memory)}")
@@ -197,7 +197,7 @@ def test_complex_tree_small_dataset(small_dataset):
     result, duration, peak_memory = benchmark(tree.run, small_dataset)
     
     print(f"\n{'='*60}")
-    print(f"Complex Tree (2 levels) + Small Dataset (1K rows)")
+    print("Complex Tree (2 levels) + Small Dataset (1K rows)")
     print(f"{'='*60}")
     print(f"Duration: {format_duration(duration)}")
     print(f"Peak Memory: {format_memory(peak_memory)}")
@@ -227,7 +227,7 @@ def test_complex_tree_large_dataset(large_dataset):
     result, duration, peak_memory = benchmark(tree.run, large_dataset)
     
     print(f"\n{'='*60}")
-    print(f"Complex Tree (2 levels) + Large Dataset (100K rows)")
+    print("Complex Tree (2 levels) + Large Dataset (100K rows)")
     print(f"{'='*60}")
     print(f"Duration: {format_duration(duration)}")
     print(f"Peak Memory: {format_memory(peak_memory)}")
@@ -259,7 +259,7 @@ def test_very_complex_tree_medium_dataset(medium_dataset):
     result, duration, peak_memory = benchmark(tree.run, medium_dataset)
     
     print(f"\n{'='*60}")
-    print(f"Very Complex Tree (3 levels) + Medium Dataset (10K rows)")
+    print("Very Complex Tree (3 levels) + Medium Dataset (10K rows)")
     print(f"{'='*60}")
     print(f"Duration: {format_duration(duration)}")
     print(f"Peak Memory: {format_memory(peak_memory)}")
@@ -318,7 +318,7 @@ def test_performance_summary(small_dataset, medium_dataset, large_dataset):
     
     # Print summary table
     print(f"\n{'='*80}")
-    print(f"PERFORMANCE SUMMARY")
+    print("PERFORMANCE SUMMARY")
     print(f"{'='*80}")
     print(f"{'Tree Type':<25} {'Dataset':<10} {'Duration':<15} {'Peak Memory':<15}")
     print(f"{'-'*80}")

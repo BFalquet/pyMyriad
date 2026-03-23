@@ -1,4 +1,3 @@
-import pytest
 from pyMyriad import AnalysisTree, AnalysisNode, SplitNode
 
 def test_tree_construction_split_node():
@@ -84,7 +83,7 @@ def test_analyze_by():
     assert res == res2
 
     # Termination doesn't prevent addition of analysis node
-    res3 = res.analyze_by(s = "np.std(df.B)")
+    res.analyze_by(s = "np.std(df.B)")
     assert len(res[0]) == 2
     assert isinstance(res[0][0], AnalysisNode)
     assert isinstance(res[0][1], AnalysisNode)

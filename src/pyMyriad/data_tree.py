@@ -33,8 +33,7 @@ See also:
 """
 
 import pandas as pd
-import numpy as np
-from .utils import scope_eval, get_top_globals, analysis_to_string, count_or_length
+from .utils import analysis_to_string
 
 class DataNode():
     """Represents a node in a data tree structure, holding data and metadata.

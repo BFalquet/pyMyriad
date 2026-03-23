@@ -371,8 +371,6 @@ def plot_distribution(data, type:str = "scatter", x:str = None, **kwargs):
     y_series = data[[y, "y_label", "pivot_lvl"]]
     merge_data = pd.merge(y_series, x_series, left_index=True, right_index=True, how='left')
 
-    y_lab = data["y_label"].to_list()
-
     if type == "scatter":
         plt.scatter(
             merge_data["summary"], 

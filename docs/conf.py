@@ -19,7 +19,7 @@ author = 'pyMyriad Contributors'
 # built documents.
 #
 # Get version from __init__.py
-import pyMyriad
+import pyMyriad  # noqa: E402
 version = pyMyriad.__version__
 release = version
 

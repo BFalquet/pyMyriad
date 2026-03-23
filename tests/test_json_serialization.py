@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from pyMyriad import AnalysisTree, SplitNode, AnalysisNode
-from pyMyriad.analysis_tree import CrossAnalysisNode, _node_to_dict, _dict_to_node
+from pyMyriad.analysis_tree import CrossAnalysisNode
 
 
 # ---------------------------------------------------------------------------

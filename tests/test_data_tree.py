@@ -1,4 +1,4 @@
-from pyMyriad import *
+from pyMyriad import DataTree, DataNode, LvlDataNode, SplitDataNode
 
 def test_data_tree_empty():
     dt = DataTree()

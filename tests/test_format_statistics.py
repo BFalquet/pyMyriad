@@ -1,4 +1,4 @@
-from pyMyriad import *
+from pyMyriad import DataTree, DataNode, LvlDataNode, SplitDataNode, format_statistics
 import pytest
 
 def test_format_statistics_basic():

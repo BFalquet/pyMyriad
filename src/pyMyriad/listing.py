@@ -34,7 +34,10 @@ See also:
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from great_tables import GT
 
 import pandas as pd
 
