@@ -174,12 +174,14 @@ class AnalysisTree(list):
         """
         cls._default_environ = environ
     
-    def split_by(self, expr: str = None, label: str = None, **kwargs):
+    def split_by(self, expr: str = None, label: str = None, drop_empty: bool = False, **kwargs):
         """Add a split node at the extremites of the branches.
         Note: 
             No split node is added where there is already a split node or an analysis node with termination signal.
         Args:
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
+            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded.
+                Defaults to False.
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Returns:
             AnalysisTree: The modified AnalysisTree with the new split node added.
@@ -187,6 +189,7 @@ class AnalysisTree(list):
             >>> a_tree = AnalysisTree()
             >>> a_tree = a_tree.split_by(m = "df.A > 50")
             >>> a_tree = a_tree.split_by("df.B > 50")
+            >>> a_tree = a_tree.split_by("df.Gender", drop_empty=True)
         """
         
         is_split_node = [isinstance(x, SplitNode) for x in self]
@@ -194,22 +197,24 @@ class AnalysisTree(list):
 
         # length 0 OR (no split node and no termination signal)
         if ((len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination)):
-            self.append(SplitNode(expr = expr, label = label, **kwargs))
+            self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
         
         else:
             for i in range(len(self)):
                     if isinstance(self[i], SplitNode):
-                        self[i] = self[i].split_by(expr = expr, label = label, **kwargs)
+                        self[i] = self[i].split_by(expr = expr, label = label, drop_empty = drop_empty, **kwargs)
                 
         return self
     
-    def split_at_by(self, path: list, expr: str = None, label:str = None, **kwargs):
+    def split_at_by(self, path: list, expr: str = None, label:str = None, drop_empty: bool = False, **kwargs):
         """Add a split node at a specific path in the tree.
         
         Args:
             path (list): A list representing the path where the split node should be added.
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
             label (str, optional): The label of the node.
+            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded.
+                Defaults to False.
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Returns:
             AnalysisTree: The modified AnalysisTree with the new split node added at the specified path.
@@ -224,17 +229,17 @@ class AnalysisTree(list):
         """
         
         if (len(path) == 0):
-            self.append(SplitNode(expr = expr, label = label, **kwargs))
+            self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
 
         else:
             for i in range(len(self)):
                 if isinstance(self[i], SplitNode):
                     if (self[i].label == path[0]) or (path[0] == "*"):
-                        self[i] = self[i].split_at_by(path = path[1:], expr = expr, label = label, **kwargs)
+                        self[i] = self[i].split_at_by(path = path[1:], expr = expr, label = label, drop_empty = drop_empty, **kwargs)
         
         return self
     
-    def split_at_root_by(self, expr: str = None, label:str = None, **kwargs):
+    def split_at_root_by(self, expr: str = None, label:str = None, drop_empty: bool = False, **kwargs):
         """Add a split node at the root of the tree.
         
         Unlike split_by() which adds splits at leaf nodes, this method always adds
@@ -260,7 +265,7 @@ class AnalysisTree(list):
             split_by : Add splits at leaf nodes.
             split_at_by : Add splits at a specific path.
         """
-        self.append(SplitNode(expr = expr, label = label, **kwargs))
+        self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
 
         return self
     
@@ -415,13 +420,15 @@ class SplitNode(list):
         kwexpr (dict): A dictionary with the name of the group and the associated expression
             describing how they should be split.
     """
-    def __init__(self, *args, expr:str = None, label:str = None, **kwargs) -> None:
+    def __init__(self, *args, expr:str = None, label:str = None, drop_empty: bool = False, **kwargs) -> None:
         """
         Initializes the SplitNode object.
         Args:
             *args: Additional positional arguments.
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
             label (str, optional): The label of the node.
+            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded
+                from the result. Defaults to False (all levels are kept, even empty ones).
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Raises:
             AssertionError: If neither `expr` nor `kwargs` are provided, or if both are provided.
@@ -430,6 +437,7 @@ class SplitNode(list):
         Examples:
             >>> SplitNode("age > 50")
             >>> SplitNode(Y = "age > 50", N = "age <= 50")
+            >>> SplitNode("df.Age > 50", drop_empty=True)  # discard empty groups
         """
 
         super().__init__(args)
@@ -446,6 +454,7 @@ class SplitNode(list):
             self.kwexpr = None
             self.label = label or analysis_to_string(expr)
             self.str = analysis_to_string(expr)
+        self.drop_empty = drop_empty
 
     def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the split node.
@@ -504,7 +513,7 @@ class SplitNode(list):
             gp_eval_dict = scope_eval(df = data, extra_context = environ, **{"gp": self.expr})
             gp_bool = gp_eval_dict["gp"]
 
-            groups = data.groupby(gp_bool)
+            groups = data.groupby(gp_bool, observed=True)
                 
             # Convert to dictionary of DataFrames
             split_dfs = {str(name): group for name, group in groups}
@@ -516,7 +525,8 @@ class SplitNode(list):
             gp_eval_dict = scope_eval(df = data, extra_context = environ, **self.kwexpr)
             for n, gp in gp_eval_dict.items():
                 split_dfs.update({n: data[gp]})
-
+        if self.drop_empty:
+            split_dfs = {k: v for k, v in split_dfs.items() if len(v) > 0}
         # Recursively apply run for each data frame (that now contain the name of the groups), 
         # create a lvlnode which contains the rest of the tree
         # the self of the lvl node is the rest of the tree on which run has been applied
@@ -572,7 +582,7 @@ class SplitNode(list):
 
         return SplitDataNode(split_var = split_var, label = self.label, **res_dic)
     
-    def split_by(self, expr: str = None, label:str = None, **kwargs):
+    def split_by(self, expr: str = None, label:str = None, drop_empty: bool = False, **kwargs):
         """Add a split node at the extremites of the branches.
 
         Note: 
@@ -580,6 +590,8 @@ class SplitNode(list):
         Args:
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
             label (str, optional): The label of the node.
+            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded.
+                Defaults to False.
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Returns:
             AnalysisTree: The modified AnalysisTree with the new split node added.
@@ -594,16 +606,16 @@ class SplitNode(list):
         
         # length 0 OR (no split node and no termination signal)
         if ((len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination)):
-            self.append(SplitNode(expr = expr, label = label, **kwargs))
+            self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
         
         else:
             for i in range(len(self)):
                     if isinstance(self[i], SplitNode):
-                        self[i] = self[i].split_by(expr = expr, label = label, **kwargs)
+                        self[i] = self[i].split_by(expr = expr, label = label, drop_empty = drop_empty, **kwargs)
                 
         return self
     
-    def split_at_by(self, path: list, expr: str = None, label:str = None, **kwargs):
+    def split_at_by(self, path: list, expr: str = None, label:str = None, drop_empty: bool = False, **kwargs):
         """Add a split node at a specific path in the tree.
         
         Args:
@@ -611,6 +623,8 @@ class SplitNode(list):
                 NOT the levels of the data that are being analyzed.
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
             label (str, optional): The label of the node.
+            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded.
+                Defaults to False.
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Returns:
             AnalysisTree: The modified AnalysisTree with the new split node added at the specified path.
@@ -624,13 +638,13 @@ class SplitNode(list):
         """
         
         if (len(path) == 0):
-            self.append(SplitNode(expr = expr, label = label, **kwargs))
+            self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
 
         else:
             for i in range(len(self)):
                 if isinstance(self[i], SplitNode):
                     if (self[i].label == path[0]) or (path[0] == "*"):
-                        self[i] = self[i].split_at_by(path = path[1:], expr = expr, label = label, **kwargs)
+                        self[i] = self[i].split_at_by(path = path[1:], expr = expr, label = label, drop_empty = drop_empty, **kwargs)
         
         return self
     

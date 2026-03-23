@@ -5,6 +5,12 @@ All notable changes to pyMyriad will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `drop_empty` parameter on `split_by()`, `split_at_by()`, and `split_at_root_by()` (and on `SplitNode` directly) to optionally discard split levels that produce an empty DataFrame. Defaults to `False` (backward-compatible). Useful when conditional splits may not be satisfied by every subset of the data.
+- Categorical column support: `SplitNode.run()` now passes `observed=True` to `pandas.groupby`, so splitting on a `pd.Categorical` column only returns groups that actually appear in the data (no phantom empty groups for absent categories). This also silences the pandas ≥ 2.2 `FutureWarning` about the `observed` default changing.
+
 ## [0.1.0] - 2026-03-22
 
 ### Added
