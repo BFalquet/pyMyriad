@@ -17,6 +17,7 @@ classifiers = [
 ]
 dependencies = [
     "click>=8.2.1",
+    "matplotlib>=3.5.0",
     "numpy>=1.22.0",
     "pandas>=2.0.0",
     "plotly>=6.3.0",
