@@ -1,4 +1,5 @@
 """Tests for AnalysisTree JSON serialization / deserialization."""
+
 import json
 import os
 import tempfile
@@ -8,20 +9,23 @@ import pandas as pd
 import pytest
 
 from pyMyriad import AnalysisTree, SplitNode, AnalysisNode
-from pyMyriad.analysis_tree import CrossAnalysisNode, _node_to_dict, _dict_to_node
+from pyMyriad.analysis_tree import CrossAnalysisNode
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def simple_df():
-    return pd.DataFrame({
-        "A": [10, 20, 30, 40, 50, 60],
-        "B": [10, 20, 40, 50, 60, 100],
-        "Gender": ["M", "F", "M", "F", "M", "F"],
-    })
+    return pd.DataFrame(
+        {
+            "A": [10, 20, 30, 40, 50, 60],
+            "B": [10, 20, 40, 50, 60, 100],
+            "Gender": ["M", "F", "M", "F", "M", "F"],
+        }
+    )
 
 
 ENVIRON = {"np": np, "pd": pd}
@@ -30,6 +34,7 @@ ENVIRON = {"np": np, "pd": pd}
 # ---------------------------------------------------------------------------
 # 1. Empty tree round-trip
 # ---------------------------------------------------------------------------
+
 
 def test_empty_tree_round_trip():
     tree = AnalysisTree()
@@ -44,6 +49,7 @@ def test_empty_tree_round_trip():
 # ---------------------------------------------------------------------------
 # 2. AnalysisNode-only round-trip (string expressions)
 # ---------------------------------------------------------------------------
+
 
 def test_analysis_node_only_round_trip():
     tree = AnalysisTree().analyze_by(mean="np.mean(df.A)", n="len(df)", label="stats")
@@ -61,10 +67,9 @@ def test_analysis_node_only_round_trip():
 # 3. SplitNode with expr round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_split_expr_round_trip():
-    tree = (AnalysisTree()
-            .split_by("df.A > 20", label="A_split")
-            .analyze_by(n="len(df)"))
+    tree = AnalysisTree().split_by("df.A > 20", label="A_split").analyze_by(n="len(df)")
     d = tree.to_dict()
     split_dict = d["nodes"][0]
     assert split_dict["type"] == "SplitNode"
@@ -82,10 +87,13 @@ def test_split_expr_round_trip():
 # 4. SplitNode with kwexpr round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_split_kwexpr_round_trip():
-    tree = (AnalysisTree()
-            .split_by(high="df.A > 30", low="df.A <= 30")
-            .analyze_by(mean="np.mean(df.A)"))
+    tree = (
+        AnalysisTree()
+        .split_by(high="df.A > 30", low="df.A <= 30")
+        .analyze_by(mean="np.mean(df.A)")
+    )
     d = tree.to_dict()
     split_dict = d["nodes"][0]
     assert split_dict["type"] == "SplitNode"
@@ -100,11 +108,14 @@ def test_split_kwexpr_round_trip():
 # 5. Nested splits round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_nested_splits_round_trip():
-    tree = (AnalysisTree()
-            .split_by("df.Gender", label="Gender")
-            .split_by("df.A > 30", label="A_split")
-            .analyze_by(mean="np.mean(df.A)", label="stats"))
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .split_by("df.A > 30", label="A_split")
+        .analyze_by(mean="np.mean(df.A)", label="stats")
+    )
     json_str = tree.to_json()
     rt = AnalysisTree.from_json(json_str)
 
@@ -125,15 +136,18 @@ def test_nested_splits_round_trip():
 # 6. CrossAnalysisNode round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_cross_analysis_round_trip():
-    tree = (AnalysisTree()
-            .split_by("df.Gender", label="Gender")
-            .analyze_by(mean="np.mean(df.A)", label="stats")
-            .cross_analyze_by(
-                diff="np.mean(df.A) - np.mean(ref_df.A)",
-                label="cross",
-                ref_lvl="M",
-            ))
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .analyze_by(mean="np.mean(df.A)", label="stats")
+        .cross_analyze_by(
+            diff="np.mean(df.A) - np.mean(ref_df.A)",
+            label="cross",
+            ref_lvl="M",
+        )
+    )
     d = tree.to_dict()
     # The cross node is nested inside the SplitNode
     split_dict = d["nodes"][0]
@@ -152,13 +166,16 @@ def test_cross_analysis_round_trip():
 # 7. Lambda body extraction
 # ---------------------------------------------------------------------------
 
+
 def test_lambda_serialized_as_body():
-    tree = (AnalysisTree()
-            .split_by("df.Gender", label="Gender")
-            .analyze_by(
-                mean_a=lambda df: np.mean(df.A),
-                count=lambda df: len(df),
-            ))
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .analyze_by(
+            mean_a=lambda df: np.mean(df.A),
+            count=lambda df: len(df),
+        )
+    )
     d = tree.to_dict()
     analysis = d["nodes"][0]["nodes"][0]["analysis"]
     # Lambda bodies, not full lambda expressions
@@ -171,6 +188,7 @@ def test_lambda_serialized_as_body():
 # ---------------------------------------------------------------------------
 # 8. denom preserved
 # ---------------------------------------------------------------------------
+
 
 def test_denom_preserved():
     tree = AnalysisTree(denom="A").split_by("df.Gender").analyze_by(n="len(df)")
@@ -190,6 +208,7 @@ def test_denom_preserved():
 # ---------------------------------------------------------------------------
 # 9. to_json writes to file
 # ---------------------------------------------------------------------------
+
 
 def test_to_json_file_write():
     tree = AnalysisTree().split_by("df.Gender").analyze_by(n="len(df)")
@@ -211,6 +230,7 @@ def test_to_json_file_write():
 # 10. from_json reads from file path
 # ---------------------------------------------------------------------------
 
+
 def test_from_json_file_read():
     tree = AnalysisTree().split_by("df.Gender", label="G").analyze_by(n="len(df)")
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
@@ -229,6 +249,7 @@ def test_from_json_file_read():
 # 11. from_json accepts a raw JSON string
 # ---------------------------------------------------------------------------
 
+
 def test_from_json_string():
     tree = AnalysisTree().analyze_by(mean="np.mean(df.A)", label="mynode")
     json_str = tree.to_json()
@@ -242,14 +263,17 @@ def test_from_json_string():
 # 12. Deserialized tree is runnable
 # ---------------------------------------------------------------------------
 
+
 def test_deserialized_tree_is_runnable(simple_df):
-    tree = (AnalysisTree()
-            .split_by("df.Gender", label="Gender")
-            .analyze_by(
-                mean_a=lambda df: np.mean(df.A),
-                n=lambda df: len(df),
-                label="stats",
-            ))
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .analyze_by(
+            mean_a=lambda df: np.mean(df.A),
+            n=lambda df: len(df),
+            label="stats",
+        )
+    )
     original_result = tree.run(simple_df)
 
     rt = AnalysisTree.from_json(tree.to_json())
@@ -259,13 +283,16 @@ def test_deserialized_tree_is_runnable(simple_df):
     for gender in ["M", "F"]:
         orig_summary = original_result["Gender"][gender]["stats"].summary
         rt_summary = rt_result["Gender"][gender]["stats"].summary
-        assert pytest.approx(float(orig_summary["mean_a"])) == float(rt_summary["mean_a"])
+        assert pytest.approx(float(orig_summary["mean_a"])) == float(
+            rt_summary["mean_a"]
+        )
         assert orig_summary["n"] == rt_summary["n"]
 
 
 # ---------------------------------------------------------------------------
 # 13. Invalid JSON raises JSONDecodeError
 # ---------------------------------------------------------------------------
+
 
 def test_invalid_json_raises():
     with pytest.raises(json.JSONDecodeError):

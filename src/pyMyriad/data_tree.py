@@ -33,12 +33,12 @@ See also:
 """
 
 import pandas as pd
-import numpy as np
-from .utils import scope_eval, get_top_globals, analysis_to_string, count_or_length
+from .utils import analysis_to_string
 
-class DataNode():
+
+class DataNode:
     """Represents a node in a data tree structure, holding data and metadata.
-    
+
     Attributes:
         data: The data associated with this node. Can be any type.
         summary (dict): A dictionary containing summary information about the node.
@@ -49,7 +49,14 @@ class DataNode():
             is configured.
     """
 
-    def __init__(self, data = None, summary: dict = None, label: str = str(), depth: int = 0, _N: list | None = None):
+    def __init__(
+        self,
+        data=None,
+        summary: dict = None,
+        label: str = str(),
+        depth: int = 0,
+        _N: list | None = None,
+    ):
         """Initializes the DataNode object.
         Args:
             data: The data associated with this node. Can be any type. Defaults to None.
@@ -59,7 +66,7 @@ class DataNode():
         Examples:
             >>> DataNode(data = df, summary = {"mean": 5}, label = "Summary", depth = 1)
         """
-        
+
         self.data = data
         self.summary = summary
         self.label = label
@@ -68,54 +75,69 @@ class DataNode():
 
     def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the data node.
-        
+
         Args:
             ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
             is_last (bool): Whether this is the last child of its parent. Defaults to True.
             prefix (str): The prefix string from parent levels. Defaults to "".
-            
+
         Returns:
             str: Formatted representation of the node's summary statistics.
         """
         # Choose connector based on position
         connector = "└─ " if is_last else "├─ "
         node_header = prefix + connector + f"analysis: {self.label}\n"
-        
+
         # Build prefix for analysis details
         detail_prefix = prefix + ("   " if is_last else "│  ")
-        
+
         # Format analysis details with box-drawing characters
         summary_items = list((self.summary or {}).items())
         summary_lines = []
         for i, (key, value) in enumerate(summary_items):
-            detail_is_last = (i == len(summary_items) - 1)
+            detail_is_last = i == len(summary_items) - 1
             detail_connector = "└─ " if detail_is_last else "├─ "
-            summary_lines.append(detail_prefix + detail_connector + f"{key}: {str(value)}\n")
-        
+            summary_lines.append(
+                detail_prefix + detail_connector + f"{key}: {str(value)}\n"
+            )
+
         return node_header + "".join(summary_lines)
-    
-    def __flatten__(self, path = (), depth: int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = (), data:bool = False) -> pd.DataFrame:
+
+    def __flatten__(
+        self,
+        path=(),
+        depth: int = 0,
+        pivot_var=(),
+        pivot_now: bool = False,
+        path_pivot=(),
+        pivot_split=(),
+        pivot_lvl=(),
+        data: bool = False,
+    ) -> pd.DataFrame:
 
         path = path + ("analysis",)
         path_pivot = path_pivot + ("analysis",)
-        
-        return pd.DataFrame({
-            'type': ['analysis'],
-            'split': [None],
-            'lvl': [None],
-            'path': [list(path)],
-            'path_pivot': [list(path_pivot)],
-            'pivot_split': [list(pivot_split)],
-            'pivot_lvl': [list(pivot_lvl)],
-            'depth': depth,
-            'label': self.label,
-            'summary': [self.data] if data else [self.summary]
-        }, index = [0])
+
+        return pd.DataFrame(
+            {
+                "type": ["analysis"],
+                "split": [None],
+                "lvl": [None],
+                "path": [list(path)],
+                "path_pivot": [list(path_pivot)],
+                "pivot_split": [list(pivot_split)],
+                "pivot_lvl": [list(pivot_lvl)],
+                "depth": depth,
+                "label": self.label,
+                "summary": [self.data] if data else [self.summary],
+            },
+            index=[0],
+        )
 
 
 class SplitDataNode(dict):
     """A node representing a split in a hierarchical data structure.
-    
+
     This class inherits from `dictionnary` and is intended to contain child nodes of type `LvlDataNode`.
     Each `SplitDataNode` is associated with a splitting variable, specified by `split_var`.
 
@@ -125,7 +147,7 @@ class SplitDataNode(dict):
 
     def __init__(self, split_var: str, label: str = None, **kwargs):
         """Initializes the SplitDataNode object.
-        
+
         Args:
             split_var (str): The variable name used for splitting.
             label (str, optional): The label for the split node. Defaults to None.
@@ -140,7 +162,7 @@ class SplitDataNode(dict):
             >>> SplitDataNode()
         """
 
-        acceptable_lst = [isinstance(x, (LvlDataNode)) for x in kwargs.values()] 
+        acceptable_lst = [isinstance(x, (LvlDataNode)) for x in kwargs.values()]
         assert all(acceptable_lst), "All elements must be instances of LvlDataNode"
         super().__init__(**kwargs)
         self.split_var = split_var
@@ -148,33 +170,42 @@ class SplitDataNode(dict):
 
     def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the split data node.
-        
+
         Args:
             ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
             is_last (bool): Whether this is the last child of its parent. Defaults to True.
             prefix (str): The prefix string from parent levels. Defaults to "".
-            
+
         Returns:
             str: Formatted representation of the split and its levels.
         """
         # Choose connector based on position
         connector = "└─ " if is_last else "├─ "
         split_str = prefix + connector + f"Split: {self.label}\n"
-        
+
         # Build prefix for children
         child_prefix = prefix + ("   " if is_last else "│  ")
-        
+
         # Process children
         result = [split_str]
         for i, child in enumerate(self.values()):
-            child_is_last = (i == len(self) - 1)
+            child_is_last = i == len(self) - 1
             result.append(child.__str__(is_last=child_is_last, prefix=child_prefix))
-        
-        return "".join(result)
-    
-    def __flatten__(self, path = (), depth: int = 0, pivot_var = (), path_pivot = (), pivot_split = (), pivot_lvl = (), data:bool = False) -> pd.DataFrame:
 
-        path = path + (self.label,) # split_var
+        return "".join(result)
+
+    def __flatten__(
+        self,
+        path=(),
+        depth: int = 0,
+        pivot_var=(),
+        path_pivot=(),
+        pivot_split=(),
+        pivot_lvl=(),
+        data: bool = False,
+    ) -> pd.DataFrame:
+
+        path = path + (self.label,)  # split_var
 
         if self.label in pivot_var:
             path_pivot = path_pivot
@@ -185,24 +216,38 @@ class SplitDataNode(dict):
             path_pivot = path_pivot + (self.label,)
             pivot_now = False
 
-        res_loc = pd.DataFrame({
-            'type': ['split'],
-            'split': [self.label],
-            'lvl': [None],
-            'path': [list(path)],
-            'path_pivot': [list(path_pivot)],
-            'pivot_split': [list(pivot_split)],
-            'pivot_lvl': [list(pivot_lvl)],
-            'depth': depth,
-            'summary': [None],
-            'label': None,
-        })
+        res_loc = pd.DataFrame(
+            {
+                "type": ["split"],
+                "split": [self.label],
+                "lvl": [None],
+                "path": [list(path)],
+                "path_pivot": [list(path_pivot)],
+                "pivot_split": [list(pivot_split)],
+                "pivot_lvl": [list(pivot_lvl)],
+                "depth": depth,
+                "summary": [None],
+                "label": None,
+            }
+        )
 
-        res = [x.__flatten__(path = path, depth = depth + 1, pivot_var = pivot_var, pivot_now = pivot_now, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl, data = data) for x in self.values()]
+        res = [
+            x.__flatten__(
+                path=path,
+                depth=depth + 1,
+                pivot_var=pivot_var,
+                pivot_now=pivot_now,
+                path_pivot=path_pivot,
+                pivot_split=pivot_split,
+                pivot_lvl=pivot_lvl,
+                data=data,
+            )
+            for x in self.values()
+        ]
 
         res = [res_loc] + res
-        return pd.concat(res, ignore_index = True)
-    
+        return pd.concat(res, ignore_index=True)
+
 
 class LvlDataNode(dict):
     """A subclass of dictionnary that represents a hierarchical data node at a specific split level.
@@ -215,7 +260,9 @@ class LvlDataNode(dict):
             is configured.
     """
 
-    def __init__(self, split_lvl: str, meta: any = (), _N: list | None = None, **kwargs):
+    def __init__(
+        self, split_lvl: str, meta: any = (), _N: list | None = None, **kwargs
+    ):
         """Initializes the LvlDataNode object.
         Args:
             split_lvl (str): The identifier for the split level of this node.
@@ -230,10 +277,12 @@ class LvlDataNode(dict):
             >>> LvlDataNode([], split_lvl = "level1")
         """
 
-        acceptable_lst = [isinstance(x, (SplitDataNode, DataNode)) for x in kwargs.values()] 
+        acceptable_lst = [
+            isinstance(x, (SplitDataNode, DataNode)) for x in kwargs.values()
+        ]
         assert all(acceptable_lst)
 
-        assert isinstance (split_lvl, str)
+        assert isinstance(split_lvl, str)
         super().__init__(**kwargs)
         self.split_lvl = split_lvl
         self.meta = meta
@@ -241,38 +290,48 @@ class LvlDataNode(dict):
 
     def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the level data node.
-        
+
         Args:
             ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
             is_last (bool): Whether this is the last child of its parent. Defaults to True.
             prefix (str): The prefix string from parent levels. Defaults to "".
-            
+
         Returns:
             str: Formatted representation of the level and its children.
         """
         # Choose connector based on position
         connector = "└─ " if is_last else "├─ "
         level_str = prefix + connector + f"{self.split_lvl}\n"
-        
+
         # Build prefix for children
         child_prefix = prefix + ("   " if is_last else "│  ")
-        
+
         # Process children
         result = [level_str]
         for i, child in enumerate(self.values()):
-            child_is_last = (i == len(self) - 1)
+            child_is_last = i == len(self) - 1
             result.append(child.__str__(is_last=child_is_last, prefix=child_prefix))
-        
+
         return "".join(result)
-    
-    def __flatten__(self, path = (), depth:int = 0, pivot_var = (), pivot_now: bool = False, path_pivot = (), pivot_split = (), pivot_lvl = (), data:bool = False) -> pd.DataFrame:
+
+    def __flatten__(
+        self,
+        path=(),
+        depth: int = 0,
+        pivot_var=(),
+        pivot_now: bool = False,
+        path_pivot=(),
+        pivot_split=(),
+        pivot_lvl=(),
+        data: bool = False,
+    ) -> pd.DataFrame:
         """Flatten a LvlDataNode
         Args:
-            path (str): The current path at which the `LvlDataNode` sits. 
+            path (str): The current path at which the `LvlDataNode` sits.
             depth (int): The depth at which the the `LvlDataNode` sits. Corresponds in general to the lenght of the `path`.
-            pivot_var (str): The name of the split to pivot by. ===> just transmitted further below. 
+            pivot_var (str): The name of the split to pivot by. ===> just transmitted further below.
             pivot_now (bool): whether the `LvlDataNode` sits just after a `SplitDataNode` corresponding to a `pivot_var` and should be pivoted.
-            path_pivot (str): The current path without the nodes that have been pivoted. 
+            path_pivot (str): The current path without the nodes that have been pivoted.
             pivot_split (list(str)): The list of the `SplitDataNode` to pivot by that already have been traversed. ===> just transmitted further below.
             pivot_lvl: (list(str)): The list of the `LvlDataNode` to pivot by that already have been traversed.
         """
@@ -280,38 +339,52 @@ class LvlDataNode(dict):
         path = path + (self.split_lvl,)
 
         if pivot_now:
-            path_pivot = path_pivot # Do not add anything if pivoted.
+            path_pivot = path_pivot  # Do not add anything if pivoted.
             pivot_lvl = pivot_lvl + (self.split_lvl,)
 
         else:
             path_pivot = path_pivot + (self.split_lvl,)
 
+        res_loc = pd.DataFrame(
+            {
+                "type": ["level"],
+                "split": [None],
+                "lvl": [self.split_lvl],
+                "path": [list(path)],
+                "path_pivot": [list(path_pivot)],
+                "pivot_split": [list(pivot_split)],
+                "pivot_lvl": [list(pivot_lvl)],
+                "depth": depth,
+                "label": None,
+                "summary": [None],
+            }
+        )
 
-        res_loc = pd.DataFrame({
-            'type': ['level'],
-            'split': [None],
-            'lvl': [self.split_lvl],
-            'path': [list(path)],
-            'path_pivot': [list(path_pivot)],
-            'pivot_split': [list(pivot_split)],
-            'pivot_lvl': [list(pivot_lvl)],
-            'depth': depth,
-            'label': None,
-            'summary': [None]
-        })
-
-        res = [x.__flatten__(path = path , depth = depth + 1, pivot_var = pivot_var, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl, data = data) for x in self.values()]
+        res = [
+            x.__flatten__(
+                path=path,
+                depth=depth + 1,
+                pivot_var=pivot_var,
+                path_pivot=path_pivot,
+                pivot_split=pivot_split,
+                pivot_lvl=pivot_lvl,
+                data=data,
+            )
+            for x in self.values()
+        ]
         res = [res_loc] + res
-        return pd.concat(res, ignore_index = True)
+        return pd.concat(res, ignore_index=True)
+
 
 class DataTree(dict):
     """A subclass of dictionnary that represents a data tree.
-    
+
     Attributes:
         _N (list | None): Cumulative unique-count list; a single-element list ``[n_root]``
             when a denominator is set on the :class:`AnalysisTree`. ``None`` when no
             denominator is configured.
     """
+
     def __init__(self, _N: list | None = None, **kwargs):
         """Initializes the DataTree object.
         Args:
@@ -322,27 +395,29 @@ class DataTree(dict):
         Examples:
             >>> DataTree()
         """
-        acceptable_lst = [isinstance(x, (SplitDataNode, DataNode)) for x in kwargs.values()] 
+        acceptable_lst = [
+            isinstance(x, (SplitDataNode, DataNode)) for x in kwargs.values()
+        ]
         assert all(acceptable_lst)
         super().__init__(**kwargs)
         self._N = _N
 
     def __str__(self):
         """Return a string representation of the data tree.
-        
+
         Returns:
             str: Formatted tree structure showing splits, levels, and results.
         """
         if len(self) == 0:
             return "Data Tree\n"
-        
+
         result = ["Data Tree\n"]
         for i, node in enumerate(self.values()):
-            is_last = (i == len(self) - 1)
+            is_last = i == len(self) - 1
             result.append(node.__str__(is_last=is_last, prefix=""))
         return "".join(result)
-    
-    def __flatten__(self, pivot:str = (), data:bool = False) -> pd.DataFrame:
+
+    def __flatten__(self, pivot: str = (), data: bool = False) -> pd.DataFrame:
         """Flatten a DataTree into a DataFrame.
         This method flattens the hierarchical structure of the DataTree into a pandas DataFrame.
         Args:
@@ -357,19 +432,32 @@ class DataTree(dict):
         pivot_lvl = ()
         path_pivot = ("root",)
 
-        res_loc = pd.DataFrame({
-            'type': ['root'],
-            'split': [None],
-            'lvl': [None],
-            'path': [list(path)],
-            'path_pivot': [list(path)],
-            'pivot_split': [list(())],
-            'pivot_lvl': [list(())],
-            'depth': depth,
-            'label': None,
-            'summary': [None]
-        })
+        res_loc = pd.DataFrame(
+            {
+                "type": ["root"],
+                "split": [None],
+                "lvl": [None],
+                "path": [list(path)],
+                "path_pivot": [list(path)],
+                "pivot_split": [list(())],
+                "pivot_lvl": [list(())],
+                "depth": depth,
+                "label": None,
+                "summary": [None],
+            }
+        )
 
-        res = [x.__flatten__(path = path, depth = depth + 1, pivot_var = pivot, path_pivot = path_pivot, pivot_split = pivot_split, pivot_lvl = pivot_lvl, data = data) for x in self.values()]
+        res = [
+            x.__flatten__(
+                path=path,
+                depth=depth + 1,
+                pivot_var=pivot,
+                path_pivot=path_pivot,
+                pivot_split=pivot_split,
+                pivot_lvl=pivot_lvl,
+                data=data,
+            )
+            for x in self.values()
+        ]
         res = [res_loc] + res
-        return pd.concat(res, ignore_index = True)
+        return pd.concat(res, ignore_index=True)
