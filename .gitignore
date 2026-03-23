@@ -17,3 +17,6 @@ docs/generated/
 
 # macOS
 .DS_Store
+
+# ai prompts
+prompts/
