@@ -9,6 +9,7 @@ Learn how to use pyMyriad effectively with these comprehensive guides.
    quickstart
    concepts
    workflows
+   interoperability
 
 Getting Started
 ---------------
@@ -24,3 +25,9 @@ Advanced Usage
 --------------
 
 Explore :doc:`workflows` for common patterns and advanced use cases.
+
+Agent & System Interoperability
+--------------------------------
+
+Read the :doc:`interoperability` guide to learn how to serialize analysis trees
+to JSON for use with AI agents and external systems.

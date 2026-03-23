@@ -1,0 +1,32 @@
+{
+  "type": "AnalysisTree",
+  "denom": null,
+  "nodes": [
+    {
+      "type": "SplitNode",
+      "label": "Gender",
+      "drop_empty": false,
+      "expr": "df.Gender",
+      "nodes": [
+        {
+          "type": "SplitNode",
+          "label": "Country",
+          "drop_empty": false,
+          "expr": "df.Country",
+          "nodes": [
+            {
+              "type": "AnalysisNode",
+              "label": "stats",
+              "termination": true,
+              "analysis": {
+                "n": "len(df)",
+                "mean_income": "np.mean(df.Income)",
+                "std_income": "np.std(df.Income)"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

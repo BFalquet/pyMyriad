@@ -31,10 +31,12 @@ See also:
 import sys
 import inspect
 import ast
+import json
+import os
 import warnings
 import pandas as pd
 from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
-from .utils import scope_eval, get_top_globals, analysis_to_string, count_or_length, scope_cross_eval
+from .utils import scope_eval, get_top_globals, analysis_to_string, count_or_length, scope_cross_eval, _callable_to_expr_str
 
 #region AnalysisTree
 
@@ -173,7 +175,137 @@ class AnalysisTree(list):
             >>> AnalysisTree.set_default_environ(None)
         """
         cls._default_environ = environ
-    
+
+    # -------------------------------------------------------------------------
+    # JSON serialization / deserialization
+    # -------------------------------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """Serialize the analysis tree to a JSON-compatible dictionary.
+
+        The dictionary captures the full tree structure including all split
+        and analysis expressions, labels, and the ``denom`` setting.
+        Callable (lambda) expressions are converted to their body string so the
+        result is fully JSON-serializable.  Pass the output to
+        :meth:`from_dict` to reconstruct an equivalent tree.
+
+        Returns:
+            dict: A JSON-serializable representation of the tree.
+
+        See Also:
+            to_json : Serialize to a JSON string (optionally writing to a file).
+            from_dict : Reconstruct a tree from a dictionary.
+
+        Examples:
+            >>> import numpy as np
+            >>> tree = (AnalysisTree()
+            ...     .split_by("df.Gender")
+            ...     .analyze_by(mean=lambda df: np.mean(df.Income)))
+            >>> d = tree.to_dict()
+            >>> d["type"]
+            'AnalysisTree'
+            >>> d["nodes"][0]["type"]
+            'SplitNode'
+        """
+        return {
+            "type": "AnalysisTree",
+            "denom": self.denom,
+            "nodes": [_node_to_dict(node) for node in self],
+        }
+
+    def to_json(self, path: str = None, indent: int = 2) -> str:
+        """Serialize the analysis tree to a JSON string.
+
+        Lambda functions are converted to their body expression string so the
+        resulting JSON is human-readable and can be loaded back with
+        :meth:`from_json`.
+
+        Args:
+            path (str, optional): If provided, the JSON is also written to this
+                file.  The directory must already exist.  Defaults to ``None``.
+            indent (int, optional): Number of spaces used for JSON indentation.
+                Defaults to ``2``.
+
+        Returns:
+            str: The JSON string representation of the tree.
+
+        See Also:
+            from_json : Reconstruct a tree from a JSON string or file.
+            to_dict : Serialize to a plain Python dictionary.
+
+        Examples:
+            >>> tree = AnalysisTree().split_by("df.Gender").analyze_by(n=lambda df: len(df))
+            >>> json_str = tree.to_json()
+            >>> reconstructed = AnalysisTree.from_json(json_str)
+        """
+        result = json.dumps(self.to_dict(), indent=indent)
+        if path is not None:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(result)
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AnalysisTree":
+        """Reconstruct an analysis tree from a dictionary.
+
+        The dictionary must have the format produced by :meth:`to_dict`.
+        After reconstruction all analysis expressions are stored as strings,
+        so running the tree requires the referenced names (e.g. ``np``,
+        ``pd``) to be available in the ``environ`` passed to :meth:`run`
+        or configured via :meth:`set_default_environ`.
+
+        Args:
+            data (dict): A dictionary produced by :meth:`to_dict`.
+
+        Returns:
+            AnalysisTree: The reconstructed analysis tree.
+
+        See Also:
+            to_dict : Serialize to a dictionary.
+            from_json : Reconstruct from a JSON string or file.
+
+        Examples:
+            >>> tree = AnalysisTree().split_by("df.Gender").analyze_by(n="len(df)")
+            >>> reconstructed = AnalysisTree.from_dict(tree.to_dict())
+        """
+        nodes = [_dict_to_node(n) for n in data.get("nodes", [])]
+        return cls(*nodes, denom=data.get("denom"))
+
+    @classmethod
+    def from_json(cls, source: str) -> "AnalysisTree":
+        """Reconstruct an analysis tree from a JSON string or file path.
+
+        Automatically detects whether *source* is an existing file path
+        (checked via :func:`os.path.isfile`) or a raw JSON string.
+
+        Args:
+            source (str): A JSON string or the path to a ``.json`` file
+                produced by :meth:`to_json`.
+
+        Returns:
+            AnalysisTree: The reconstructed analysis tree.
+
+        Raises:
+            json.JSONDecodeError: If *source* is not a valid JSON string.
+
+        See Also:
+            to_json : Serialize a tree to JSON.
+            from_dict : Reconstruct from a plain dictionary.
+
+        Examples:
+            >>> tree = AnalysisTree().split_by("df.Gender").analyze_by(n="len(df)")
+            >>> tree.to_json("/tmp/my_tree.json")
+            >>> loaded = AnalysisTree.from_json("/tmp/my_tree.json")
+
+            >>> # from a raw JSON string
+            >>> json_str = tree.to_json()
+            >>> loaded = AnalysisTree.from_json(json_str)
+        """
+        if os.path.isfile(source):
+            with open(source, "r", encoding="utf-8") as f:
+                source = f.read()
+        return cls.from_dict(json.loads(source))
+
     def split_by(self, expr: str = None, label: str = None, drop_empty: bool = False, **kwargs):
         """Add a split node at the extremites of the branches.
         Note: 
@@ -953,4 +1085,121 @@ class CrossAnalysisNode(list):
 
         res = scope_cross_eval(df = data["df"], ref_df = data["ref_df"], extra_context = environ, _N = _N, **self.analysis)
         return DataNode(data = data["df"], summary = res, label = self.label, depth = 0, _N = _N) # TODO: do we need another class for cross data node?
-    
+
+#endregion
+
+#region JSON
+
+def _node_to_dict(node) -> dict:
+    """Serialize a single tree node to a JSON-serializable dict.
+
+    Dispatches on the type of *node* (``SplitNode``, ``AnalysisNode``, or
+    ``CrossAnalysisNode``).  Callable values (lambdas) in analysis or split
+    expressions are converted to their body string via
+    :func:`~pyMyriad.utils._callable_to_expr_str`.
+
+    Args:
+        node: A ``SplitNode``, ``AnalysisNode``, or ``CrossAnalysisNode``.
+
+    Returns:
+        dict: A JSON-serializable representation of *node*.
+
+    Raises:
+        TypeError: If *node* is not a recognized tree node type.
+    """
+    if isinstance(node, CrossAnalysisNode):
+        analysis_ser = {
+            k: (_callable_to_expr_str(v) if callable(v) else v)
+            for k, v in node.analysis.items()
+        }
+        return {
+            "type": "CrossAnalysisNode",
+            "label": node.label,
+            "termination": node.termination,
+            "ref_lvl": node.ref_lvl,
+            "analysis": analysis_ser,
+        }
+    elif isinstance(node, AnalysisNode):
+        analysis_ser = {
+            k: (_callable_to_expr_str(v) if callable(v) else v)
+            for k, v in node.analysis.items()
+        }
+        return {
+            "type": "AnalysisNode",
+            "label": node.label,
+            "termination": node.termination,
+            "analysis": analysis_ser,
+        }
+    elif isinstance(node, SplitNode):
+        if node.expr is not None:
+            expr_ser = _callable_to_expr_str(node.expr) if callable(node.expr) else node.expr
+            split_data = {"expr": expr_ser}
+        else:
+            kwexpr_ser = {
+                k: (_callable_to_expr_str(v) if callable(v) else v)
+                for k, v in node.kwexpr.items()
+            }
+            split_data = {"kwexpr": kwexpr_ser}
+        return {
+            "type": "SplitNode",
+            "label": node.label,
+            "drop_empty": node.drop_empty,
+            **split_data,
+            "nodes": [_node_to_dict(child) for child in node],
+        }
+    else:
+        raise TypeError(f"Cannot serialize node of type {type(node).__name__!r}")
+
+
+def _dict_to_node(data: dict):
+    """Reconstruct a tree node from a serialized dict.
+
+    The dict must have a ``"type"`` key matching one of ``"SplitNode"``,
+    ``"AnalysisNode"``, or ``"CrossAnalysisNode"``.  After reconstruction all
+    analysis expressions are plain strings; running the tree requires that the
+    referenced names (e.g. ``np``) are available in ``environ``.
+
+    Args:
+        data (dict): A dictionary produced by :func:`_node_to_dict`.
+
+    Returns:
+        SplitNode | AnalysisNode | CrossAnalysisNode: The reconstructed node.
+
+    Raises:
+        ValueError: If ``data["type"]`` is not a recognized node type.
+    """
+    node_type = data.get("type")
+    if node_type == "AnalysisNode":
+        return AnalysisNode(
+            label=data["label"],
+            termination=data["termination"],
+            **data["analysis"],
+        )
+    elif node_type == "CrossAnalysisNode":
+        return CrossAnalysisNode(
+            label=data["label"],
+            termination=data["termination"],
+            ref_lvl=data["ref_lvl"],
+            **data["analysis"],
+        )
+    elif node_type == "SplitNode":
+        children = [_dict_to_node(c) for c in data.get("nodes", [])]
+        if "expr" in data:
+            return SplitNode(
+                *children,
+                expr=data["expr"],
+                label=data["label"],
+                drop_empty=data["drop_empty"],
+            )
+        else:
+            return SplitNode(
+                *children,
+                label=data["label"],
+                drop_empty=data["drop_empty"],
+                **data["kwexpr"],
+            )
+    else:
+        raise ValueError(f"Unknown node type: {node_type!r}")
+
+#endregion
+
