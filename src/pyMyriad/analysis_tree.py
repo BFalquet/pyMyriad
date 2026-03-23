@@ -33,9 +33,17 @@ import os
 import warnings
 import pandas as pd
 from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
-from .utils import scope_eval, get_top_globals, analysis_to_string, count_or_length, scope_cross_eval, _callable_to_expr_str
+from .utils import (
+    scope_eval,
+    get_top_globals,
+    analysis_to_string,
+    count_or_length,
+    scope_cross_eval,
+    _callable_to_expr_str,
+)
 
-#region AnalysisTree
+# region AnalysisTree
+
 
 class AnalysisTree(list):
     """A subclass of list that represents an analysis tree.
@@ -46,21 +54,21 @@ class AnalysisTree(list):
     Examples:
         >>> tree = AnalysisTree()
         >>> print(tree)
-    
+
     Note:
-        For string expressions like "np.mean(df.A)", numpy and pandas are auto-injected 
+        For string expressions like "np.mean(df.A)", numpy and pandas are auto-injected
         as 'np' and 'pd'. To avoid warnings, use lambda functions instead:
         `analyze_by(mean_a=lambda df: np.mean(df.A))`
-        
+
         Or explicitly set the environment:
         `AnalysisTree.set_default_environ({'np': np, 'pd': pd})`
     """
-    
+
     # Class-level default environment for expression evaluation
     _default_environ = None
-    
+
     def __init__(self, *args, denom: str | list[str] | None = None, id: str = None):
-        """ Initializes the AnalysisTree object.
+        """Initializes the AnalysisTree object.
         Args:
             *args: Variable length argument list containing SplitNode or AnalysisNode instances.
             denom (str or list of str, optional): The column name(s) used to count unique
@@ -73,8 +81,10 @@ class AnalysisTree(list):
             AssertionError: If any element in args is not an instance of SplitNode or AnalysisNode.
         """
 
-        acceptable_lst = [isinstance(x, (SplitNode, AnalysisNode)) for x in args] 
-        assert all(acceptable_lst), "Every element passed to AnalysisTree() must be a SplitNode or an AnalysisNode"
+        acceptable_lst = [isinstance(x, (SplitNode, AnalysisNode)) for x in args]
+        assert all(acceptable_lst), (
+            "Every element passed to AnalysisTree() must be a SplitNode or an AnalysisNode"
+        )
 
         if id is not None and denom is None:
             warnings.warn(
@@ -90,16 +100,16 @@ class AnalysisTree(list):
 
     def __str__(self):
         """Return a string representation of the analysis tree.
-        
+
         Returns:
             str: Formatted tree structure showing splits and analyses.
         """
         if len(self) == 0:
             return "Analysis Tree\n"
-        
+
         result = ["Analysis Tree\n"]
         for i, node in enumerate(self):
-            is_last = (i == len(self) - 1)
+            is_last = i == len(self) - 1
             result.append(node.__str__(is_last=is_last, prefix=""))
         return "".join(result)
 
@@ -120,7 +130,7 @@ class AnalysisTree(list):
             ... })
             >>> res = a_tree.run(df)
         """
-        
+
         if environ is None:
             if AnalysisTree._default_environ is not None:
                 environ = AnalysisTree._default_environ.copy()
@@ -130,44 +140,47 @@ class AnalysisTree(list):
         _N = [count_or_length(data, self.denom)] if self.denom is not None else None
 
         # Recursively apply run.
-        res_lst = [elements.run(data, environ = environ, denom = self.denom, _N = _N) for elements in self]
-        
+        res_lst = [
+            elements.run(data, environ=environ, denom=self.denom, _N=_N)
+            for elements in self
+        ]
+
         res_names = []
         for x in res_lst:
             if isinstance(x, SplitDataNode):
                 res_names.append(x.label or "Custom Split")
             else:
                 res_names.append(x.label or "Custom")
-        
+
         res = dict(zip(res_names, res_lst))
-        
+
         # TODO: hande case where res_name is not a string.
 
-        return DataTree(_N = _N, **res)
-    
+        return DataTree(_N=_N, **res)
+
     @classmethod
     def set_default_environ(cls, environ: dict = None):
         """Set a class-level default environment for expression evaluation.
-        
+
         This allows you to configure imports once instead of passing environ
         to every run() call. When set, this environment is used as the default
         for all AnalysisTree instances.
-        
+
         Args:
             environ (dict, optional): A dictionary mapping names to modules/values.
                 Pass None to clear the default and revert to auto-detection.
-        
+
         Examples:
             >>> import numpy as np
             >>> import pandas as pd
-            
+
             # Set default imports once
             >>> AnalysisTree.set_default_environ({'np': np, 'pd': pd})
-            
+
             # Now all trees will use these imports without warnings
             >>> tree = AnalysisTree().split_by("df.Gender").analyze_by(mean="np.mean(df.Income)")
             >>> result = tree.run(df)  # No need to pass environ
-            
+
             # Clear the default
             >>> AnalysisTree.set_default_environ(None)
         """
@@ -303,9 +316,11 @@ class AnalysisTree(list):
                 source = f.read()
         return cls.from_dict(json.loads(source))
 
-    def split_by(self, expr: str = None, label: str = None, drop_empty: bool = False, **kwargs):
+    def split_by(
+        self, expr: str = None, label: str = None, drop_empty: bool = False, **kwargs
+    ):
         """Add a split node at the extremites of the branches.
-        Note: 
+        Note:
             No split node is added where there is already a split node or an analysis node with termination signal.
         Args:
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
@@ -320,24 +335,37 @@ class AnalysisTree(list):
             >>> a_tree = a_tree.split_by("df.B > 50")
             >>> a_tree = a_tree.split_by("df.Gender", drop_empty=True)
         """
-        
+
         is_split_node = [isinstance(x, SplitNode) for x in self]
-        no_termination = not any([x.termination for x in self if isinstance(x, AnalysisNode)])
+        no_termination = not any(
+            [x.termination for x in self if isinstance(x, AnalysisNode)]
+        )
 
         # length 0 OR (no split node and no termination signal)
-        if ((len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination)):
-            self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
-        
+        if (len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination):
+            self.append(
+                SplitNode(expr=expr, label=label, drop_empty=drop_empty, **kwargs)
+            )
+
         else:
             for i in range(len(self)):
-                    if isinstance(self[i], SplitNode):
-                        self[i] = self[i].split_by(expr = expr, label = label, drop_empty = drop_empty, **kwargs)
-                
+                if isinstance(self[i], SplitNode):
+                    self[i] = self[i].split_by(
+                        expr=expr, label=label, drop_empty=drop_empty, **kwargs
+                    )
+
         return self
-    
-    def split_at_by(self, path: list, expr: str = None, label:str = None, drop_empty: bool = False, **kwargs):
+
+    def split_at_by(
+        self,
+        path: list,
+        expr: str = None,
+        label: str = None,
+        drop_empty: bool = False,
+        **kwargs,
+    ):
         """Add a split node at a specific path in the tree.
-        
+
         Args:
             path (list): A list representing the path where the split node should be added.
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
@@ -356,51 +384,61 @@ class AnalysisTree(list):
             >>> print(a_tree)
 
         """
-        
-        if (len(path) == 0):
-            self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
+
+        if len(path) == 0:
+            self.append(
+                SplitNode(expr=expr, label=label, drop_empty=drop_empty, **kwargs)
+            )
 
         else:
             for i in range(len(self)):
                 if isinstance(self[i], SplitNode):
                     if (self[i].label == path[0]) or (path[0] == "*"):
-                        self[i] = self[i].split_at_by(path = path[1:], expr = expr, label = label, drop_empty = drop_empty, **kwargs)
-        
+                        self[i] = self[i].split_at_by(
+                            path=path[1:],
+                            expr=expr,
+                            label=label,
+                            drop_empty=drop_empty,
+                            **kwargs,
+                        )
+
         return self
-    
-    def split_at_root_by(self, expr: str = None, label:str = None, drop_empty: bool = False, **kwargs):
+
+    def split_at_root_by(
+        self, expr: str = None, label: str = None, drop_empty: bool = False, **kwargs
+    ):
         """Add a split node at the root of the tree.
-        
+
         Unlike split_by() which adds splits at leaf nodes, this method always adds
         a split at the root level regardless of the current tree structure.
-        
+
         Args:
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
             label (str, optional): The label of the node.
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
-        
+
         Returns:
             AnalysisTree: The modified AnalysisTree with the new split node added at the root.
-        
+
         Examples:
             >>> tree = AnalysisTree()
             >>> tree = tree.split_by('df.Gender')  # Split at leaves
             >>> tree = tree.split_at_root_by('df.Country')  # Force split at root
-            
+
             >>> # Using keyword arguments
             >>> tree = tree.split_at_root_by(US='df.Country == "US"', UK='df.Country == "UK"')
-        
+
         See Also:
             split_by : Add splits at leaf nodes.
             split_at_by : Add splits at a specific path.
         """
-        self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
+        self.append(SplitNode(expr=expr, label=label, drop_empty=drop_empty, **kwargs))
 
         return self
-    
+
     def analyze_by(self, *args, label: str = str(), termination: bool = True, **kwargs):
         """Add an analysis node at the extremites of the branches.
-        
+
         Args:
             *args: Additional positional arguments representing analysis expressions.
             label (str, optional): The label for the analysis node. Defaults to an empty string.
@@ -433,63 +471,81 @@ class AnalysisTree(list):
         is_split_node = [isinstance(x, SplitNode) for x in self]
 
         # length 0 OR (no split node and no termination signal)
-        if ((len(is_split_node) == 0) or (not any(is_split_node))):
-            self.append(AnalysisNode(*args, label = label, termination = termination, **kwargs))
-        
+        if (len(is_split_node) == 0) or (not any(is_split_node)):
+            self.append(
+                AnalysisNode(*args, label=label, termination=termination, **kwargs)
+            )
+
         else:
             for i in range(len(self)):
-                    if isinstance(self[i], SplitNode):
-                        self[i] = self[i].analyze_by(*args, label = label, termination = termination, **kwargs)
+                if isinstance(self[i], SplitNode):
+                    self[i] = self[i].analyze_by(
+                        *args, label=label, termination=termination, **kwargs
+                    )
 
         return self
-    
-    def analyze_at_by(self, path: list, *args, label: str = str(), termination: bool = True, **kwargs):
+
+    def analyze_at_by(
+        self, path: list, *args, label: str = str(), termination: bool = True, **kwargs
+    ):
         """Add an analysis node at a specific path in the tree."""
-        if (len(path) == 0):
-            self.append(AnalysisNode(*args, label = label, termination = termination, **kwargs))
+        if len(path) == 0:
+            self.append(
+                AnalysisNode(*args, label=label, termination=termination, **kwargs)
+            )
         else:
             for i in range(len(self)):
                 if isinstance(self[i], SplitNode):
                     if (self[i].label == path[0]) or (path[0] == "*"):
-                        self[i] = self[i].analyze_at_by(path = path[1:], *args, label = label, termination = termination, **kwargs)
+                        self[i] = self[i].analyze_at_by(
+                            path=path[1:],
+                            *args,
+                            label=label,
+                            termination=termination,
+                            **kwargs,
+                        )
 
         return self
 
-    def summarize_by(self, *args, label: str = str(), termination: bool = False, **kwargs):
+    def summarize_by(
+        self, *args, label: str = str(), termination: bool = False, **kwargs
+    ):
         """Add an analysis node without a termination signal at the extremities of the branches.
-        
+
         This is a convenience method equivalent to analyze_by() with termination=False.
         Nodes added with this method allow further splits to be added after them,
         enabling intermediate summary statistics in the tree.
-        
+
         Args:
             *args: Additional positional arguments representing analysis expressions.
             label (str, optional): The label for the analysis node. Defaults to an empty string.
             termination (bool, optional): Indicates if this node is a termination node. Defaults to False.
             **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
-        
+
         Returns:
             AnalysisTree: The modified AnalysisTree with the new summary node added.
-        
+
         Examples:
             >>> tree = AnalysisTree()
             >>> tree = tree.summarize_by(intermediate_count=lambda df: len(df))
             >>> tree = tree.split_by('df.Gender')  # Can still add splits after summarize
             >>> tree = tree.analyze_by(final_mean=lambda df: np.mean(df.Income))  # Terminal analysis
-        
+
         See Also:
             analyze_by : Add terminal analysis nodes (termination=True).
             summarize_at_by : Add summary at a specific path.
         """
-        self.analyze_by(*args, label = label, termination = termination, **kwargs)
+        self.analyze_by(*args, label=label, termination=termination, **kwargs)
         return self
-    
-    def summarize_at_by(self, path: list, *args, label: str = str(), termination: bool = False, **kwargs):
+
+    def summarize_at_by(
+        self, path: list, *args, label: str = str(), termination: bool = False, **kwargs
+    ):
         """Add an analysis node without a termination signal at a specific path in the tree.
-        
+
         This is a convenience method equivalent to analyze_at_by() with termination=False.
         Allows adding intermediate summary statistics at a specific location in the tree.
-        
+
         Args:
             path (list): A list representing the path where the summary node should be added.
                 Use ["*"] to apply to all branches at a given level. Note that the elements of that path correspond to the labels of the split node,
@@ -498,23 +554,32 @@ class AnalysisTree(list):
             label (str, optional): The label for the analysis node. Defaults to an empty string.
             termination (bool, optional): Indicates if this node is a termination node. Defaults to False.
             **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
-        
+
         Returns:
             AnalysisTree: The modified AnalysisTree with the new summary node added.
-        
+
         Examples:
             >>> tree = AnalysisTree()
             >>> tree = tree.split_by('df.Gender', label="Gender").split_by('df.Country', label="Country")
             >>> tree = tree.summarize_at_by(["Gender"], n=lambda df: len(df), label="Count")
-        
+
         See Also:
             analyze_at_by : Add terminal analysis at a specific path.
             summarize_by : Add summary at all leaf nodes.
         """
-        self.analyze_at_by(path = path, *args, label = label, termination = termination, **kwargs)
+        self.analyze_at_by(
+            path=path, *args, label=label, termination=termination, **kwargs
+        )
         return self
-    
-    def cross_analyze_by(self, *args, label: str = str(), ref_lvl: str = str(), termination: bool = True, **kwargs):
+
+    def cross_analyze_by(
+        self,
+        *args,
+        label: str = str(),
+        ref_lvl: str = str(),
+        termination: bool = True,
+        **kwargs,
+    ):
         """Add a cross-analysis node at the extremites of the branches.
         Args:
             *args: Additional positional arguments representing analysis expressions.
@@ -532,14 +597,22 @@ class AnalysisTree(list):
         """
 
         for i in range(len(self)):
-                if isinstance(self[i], SplitNode):
-                    self[i] = self[i].cross_analyze_by(*args, label = label, ref_lvl = ref_lvl, termination = termination, **kwargs)
+            if isinstance(self[i], SplitNode):
+                self[i] = self[i].cross_analyze_by(
+                    *args,
+                    label=label,
+                    ref_lvl=ref_lvl,
+                    termination=termination,
+                    **kwargs,
+                )
 
         return self
 
-#endregion
 
-#region SplitNode
+# endregion
+
+# region SplitNode
+
 
 class SplitNode(list):
     """A subclass of list representing a splitting node.
@@ -549,7 +622,15 @@ class SplitNode(list):
         kwexpr (dict): A dictionary with the name of the group and the associated expression
             describing how they should be split.
     """
-    def __init__(self, *args, expr:str = None, label:str = None, drop_empty: bool = False, **kwargs) -> None:
+
+    def __init__(
+        self,
+        *args,
+        expr: str = None,
+        label: str = None,
+        drop_empty: bool = False,
+        **kwargs,
+    ) -> None:
         """
         Initializes the SplitNode object.
         Args:
@@ -587,12 +668,12 @@ class SplitNode(list):
 
     def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the split node.
-        
+
         Args:
             ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
             is_last (bool): Whether this is the last child of its parent. Defaults to True.
             prefix (str): The prefix string from parent levels. Defaults to "".
-            
+
         Returns:
             str: Formatted representation of the split and its children.
         """
@@ -600,25 +681,27 @@ class SplitNode(list):
         if self.expr is not None:
             res = self.str
         else:
-            expr_lst = [f"{k}: {v}" for k,v in self.str.items()]
+            expr_lst = [f"{k}: {v}" for k, v in self.str.items()]
             res = " -- ".join(expr_lst)
 
         # Choose connector based on position
         connector = "└─ " if is_last else "├─ "
         split_str = prefix + connector + f"Split Node {self.label}: [" + res + "]\n"
-        
+
         # Build prefix for children
         child_prefix = prefix + ("   " if is_last else "│  ")
-        
+
         # Process children
         result = [split_str]
         for i, child in enumerate(self):
-            child_is_last = (i == len(self) - 1)
+            child_is_last = i == len(self) - 1
             result.append(child.__str__(is_last=child_is_last, prefix=child_prefix))
-        
+
         return "".join(result)
 
-    def run(self, data: pd.DataFrame, environ: dict = None, denom=None, _N=None) -> SplitDataNode:
+    def run(
+        self, data: pd.DataFrame, environ: dict = None, denom=None, _N=None
+    ) -> SplitDataNode:
         """Run the split node on the provided DataFrame.
         Args:
             data (pd.DataFrame): The DataFrame to split.
@@ -639,11 +722,13 @@ class SplitNode(list):
 
         if self.expr is not None:
             # Split using a single expression.
-            gp_eval_dict = scope_eval(df = data, extra_context = environ, **{"gp": self.expr})
+            gp_eval_dict = scope_eval(
+                df=data, extra_context=environ, **{"gp": self.expr}
+            )
             gp_bool = gp_eval_dict["gp"]
 
             groups = data.groupby(gp_bool, observed=True)
-                
+
             # Convert to dictionary of DataFrames
             split_dfs = {str(name): group for name, group in groups}
 
@@ -651,25 +736,40 @@ class SplitNode(list):
             # Split using multiple expressions.
             # Note: Group might overlap or not cover all rows.
             split_dfs = {}
-            gp_eval_dict = scope_eval(df = data, extra_context = environ, **self.kwexpr)
+            gp_eval_dict = scope_eval(df=data, extra_context=environ, **self.kwexpr)
             for n, gp in gp_eval_dict.items():
                 split_dfs.update({n: data[gp]})
         if self.drop_empty:
             split_dfs = {k: v for k, v in split_dfs.items() if len(v) > 0}
-        # Recursively apply run for each data frame (that now contain the name of the groups), 
+        # Recursively apply run for each data frame (that now contain the name of the groups),
         # create a lvlnode which contains the rest of the tree
         # the self of the lvl node is the rest of the tree on which run has been applied
         # res_dic = {str(n): LvlDataNode(split_lvl = str(n), _N = count_or_length(data, id), **{str(nn): element.run(data, environ = environ, id = id, _N = None) for nn, element in enumerate(self)}) for n, data in split_dfs.items()}
 
-        # Selectt the elements of self that are not CrossAnalysisNode
+        # Selectt the elements of self that are not CrossAnalysisNode
 
-        not_cross_analysis_node = {nn: element for nn, element in enumerate(self) if not isinstance(element, CrossAnalysisNode)}
-        cross_analysis_node = {nn: element for nn, element in enumerate(self) if isinstance(element, CrossAnalysisNode)}
+        not_cross_analysis_node = {
+            nn: element
+            for nn, element in enumerate(self)
+            if not isinstance(element, CrossAnalysisNode)
+        }
+        cross_analysis_node = {
+            nn: element
+            for nn, element in enumerate(self)
+            if isinstance(element, CrossAnalysisNode)
+        }
 
         res_dic = {}
         for n, subset in split_dfs.items():
-            _N_new = _N + [count_or_length(subset, denom)] if denom is not None else None
-            child_results = {(str(element.label) or str(nn)): element.run(subset, environ=environ, denom=denom, _N=_N_new) for nn, element in not_cross_analysis_node.items()}
+            _N_new = (
+                _N + [count_or_length(subset, denom)] if denom is not None else None
+            )
+            child_results = {
+                (str(element.label) or str(nn)): element.run(
+                    subset, environ=environ, denom=denom, _N=_N_new
+                )
+                for nn, element in not_cross_analysis_node.items()
+            }
             res_dic[str(n)] = LvlDataNode(split_lvl=str(n), _N=_N_new, **child_results)
 
         # Handle CrossAnalysisNode separately
@@ -682,18 +782,36 @@ class SplitNode(list):
                 if len(ref_lvl) > 0:
                     # Validate that the reference level exists
                     if ref_lvl not in split_dfs:
-                        raise KeyError(f"Reference level '{ref_lvl}' not found in split levels: {list(split_dfs.keys())}")
-                    
+                        raise KeyError(
+                            f"Reference level '{ref_lvl}' not found in split levels: {list(split_dfs.keys())}"
+                        )
+
                     ref_df = split_dfs[ref_lvl]
                     non_ref_lvls = set(split_dfs.keys()) - {ref_lvl}
-                    
+
                     for var_lvl in non_ref_lvls:
                         var_df = split_dfs[var_lvl]
-                        cross_data = { "df": var_df, "ref_df": ref_df }
+                        cross_data = {"df": var_df, "ref_df": ref_df}
                         cross_label = f"{var_lvl}_vs_{ref_lvl}"
-                        _N_cross = _N + [count_or_length(var_df, denom)] if denom is not None else None
-                        res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = _N_cross, **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, denom = denom, _N = _N_cross) for nn, element in cross_analysis_node.items()})
-                
+                        _N_cross = (
+                            _N + [count_or_length(var_df, denom)]
+                            if denom is not None
+                            else None
+                        )
+                        res_dic[cross_label] = LvlDataNode(
+                            split_lvl=cross_label,
+                            _N=_N_cross,
+                            **{
+                                (str(element.label) or str(nn)): element.run(
+                                    cross_data,
+                                    environ=environ,
+                                    denom=denom,
+                                    _N=_N_cross,
+                                )
+                                for nn, element in cross_analysis_node.items()
+                            },
+                        )
+
                 # If no reference level is specified, compare every level with each other.
                 else:
                     df_keys = list(split_dfs.keys())
@@ -701,20 +819,39 @@ class SplitNode(list):
                         ref_df = split_dfs[df_keys[ref_lvl_i]]
                         for var_lvl_i in range(ref_lvl_i + 1, len(df_keys)):
                             var_df = split_dfs[df_keys[var_lvl_i]]
-                            cross_data = { "df": var_df, "ref_df": ref_df }
-                            cross_label = f"{df_keys[var_lvl_i]}_vs_{df_keys[ref_lvl_i]}"
-                            _N_cross = _N + [count_or_length(var_df, denom)] if denom is not None else None
-                            res_dic[cross_label] = LvlDataNode(split_lvl = cross_label, _N = _N_cross, **{(str(element.label) or str(nn)): element.run(cross_data, environ = environ, denom = denom, _N = _N_cross) for nn, element in cross_analysis_node.items()})
-
+                            cross_data = {"df": var_df, "ref_df": ref_df}
+                            cross_label = (
+                                f"{df_keys[var_lvl_i]}_vs_{df_keys[ref_lvl_i]}"
+                            )
+                            _N_cross = (
+                                _N + [count_or_length(var_df, denom)]
+                                if denom is not None
+                                else None
+                            )
+                            res_dic[cross_label] = LvlDataNode(
+                                split_lvl=cross_label,
+                                _N=_N_cross,
+                                **{
+                                    (str(element.label) or str(nn)): element.run(
+                                        cross_data,
+                                        environ=environ,
+                                        denom=denom,
+                                        _N=_N_cross,
+                                    )
+                                    for nn, element in cross_analysis_node.items()
+                                },
+                            )
 
         split_var = self.expr or "::".join(self.kwexpr.keys())
 
-        return SplitDataNode(split_var = split_var, label = self.label, **res_dic)
-    
-    def split_by(self, expr: str = None, label:str = None, drop_empty: bool = False, **kwargs):
+        return SplitDataNode(split_var=split_var, label=self.label, **res_dic)
+
+    def split_by(
+        self, expr: str = None, label: str = None, drop_empty: bool = False, **kwargs
+    ):
         """Add a split node at the extremites of the branches.
 
-        Note: 
+        Note:
             No split node is added where there is already a split node or an analysis node with termination signal.
         Args:
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
@@ -729,24 +866,37 @@ class SplitNode(list):
             >>> a_tree = a_tree.split_by(m = "A > 50")
             >>> a_tree = a_tree.split_by("B > 50")
         """
-            
+
         is_split_node = [isinstance(x, SplitNode) for x in self]
-        no_termination = not any([x.termination for x in self if isinstance(x, AnalysisNode)])
-        
+        no_termination = not any(
+            [x.termination for x in self if isinstance(x, AnalysisNode)]
+        )
+
         # length 0 OR (no split node and no termination signal)
-        if ((len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination)):
-            self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
-        
+        if (len(is_split_node) == 0) or ((not any(is_split_node)) and no_termination):
+            self.append(
+                SplitNode(expr=expr, label=label, drop_empty=drop_empty, **kwargs)
+            )
+
         else:
             for i in range(len(self)):
-                    if isinstance(self[i], SplitNode):
-                        self[i] = self[i].split_by(expr = expr, label = label, drop_empty = drop_empty, **kwargs)
-                
+                if isinstance(self[i], SplitNode):
+                    self[i] = self[i].split_by(
+                        expr=expr, label=label, drop_empty=drop_empty, **kwargs
+                    )
+
         return self
-    
-    def split_at_by(self, path: list, expr: str = None, label:str = None, drop_empty: bool = False, **kwargs):
+
+    def split_at_by(
+        self,
+        path: list,
+        expr: str = None,
+        label: str = None,
+        drop_empty: bool = False,
+        **kwargs,
+    ):
         """Add a split node at a specific path in the tree.
-        
+
         Args:
             path (list): A list representing the path where the split node should be added. Use ["*"] to apply to all branches at a given level. Note that the elements of that path correspond to the labels of the split node,
                 NOT the levels of the data that are being analyzed.
@@ -765,21 +915,29 @@ class SplitNode(list):
             >>> tree.split_at_by(["*", "US vs non-US"], "df.Age") # Add split by age downstream of the US vs non-US split.
             >>> tree.split_at_by([], "df.Education") # Add split by education at the root of the tree (i.e. before any other splits)
         """
-        
-        if (len(path) == 0):
-            self.append(SplitNode(expr = expr, label = label, drop_empty = drop_empty, **kwargs))
+
+        if len(path) == 0:
+            self.append(
+                SplitNode(expr=expr, label=label, drop_empty=drop_empty, **kwargs)
+            )
 
         else:
             for i in range(len(self)):
                 if isinstance(self[i], SplitNode):
                     if (self[i].label == path[0]) or (path[0] == "*"):
-                        self[i] = self[i].split_at_by(path = path[1:], expr = expr, label = label, drop_empty = drop_empty, **kwargs)
-        
+                        self[i] = self[i].split_at_by(
+                            path=path[1:],
+                            expr=expr,
+                            label=label,
+                            drop_empty=drop_empty,
+                            **kwargs,
+                        )
+
         return self
-    
+
     def analyze_by(self, *args, label: str = str(), termination: bool = True, **kwargs):
         """Add an analysis node at the extremites of the branches.
-        
+
         Args:
             *args: Additional positional arguments representing analysis expressions.
             label (str, optional): The label for the analysis node. Defaults to an empty string.
@@ -795,63 +953,81 @@ class SplitNode(list):
         is_split_node = [isinstance(x, SplitNode) for x in self]
 
         # length 0 OR (no split node and no termination signal)
-        if ((len(is_split_node) == 0) or (not any(is_split_node))):
-            self.append(AnalysisNode(*args, label = label, termination = termination, **kwargs))
-        
+        if (len(is_split_node) == 0) or (not any(is_split_node)):
+            self.append(
+                AnalysisNode(*args, label=label, termination=termination, **kwargs)
+            )
+
         else:
             for i in range(len(self)):
-                    if isinstance(self[i], SplitNode):
-                        self[i] = self[i].analyze_by(*args, label = label, termination = termination, **kwargs)
+                if isinstance(self[i], SplitNode):
+                    self[i] = self[i].analyze_by(
+                        *args, label=label, termination=termination, **kwargs
+                    )
 
         return self
-    
-    def analyze_at_by(self, path: list, *args, label: str = str(), termination: bool = True, **kwargs):
+
+    def analyze_at_by(
+        self, path: list, *args, label: str = str(), termination: bool = True, **kwargs
+    ):
         """Add an analysis node at a specific path in the tree."""
-        if (len(path) == 0):
-            self.append(AnalysisNode(*args, label = label, termination = termination, **kwargs))
+        if len(path) == 0:
+            self.append(
+                AnalysisNode(*args, label=label, termination=termination, **kwargs)
+            )
         else:
             for i in range(len(self)):
                 if isinstance(self[i], SplitNode):
                     if (self[i].label == path[0]) or (path[0] == "*"):
-                        self[i] = self[i].analyze_at_by(path = path[1:], *args, label = label, termination = termination, **kwargs)
+                        self[i] = self[i].analyze_at_by(
+                            path=path[1:],
+                            *args,
+                            label=label,
+                            termination=termination,
+                            **kwargs,
+                        )
 
         return self
-    
-    def summarize_by(self, *args, label: str = str(), termination: bool = False, **kwargs):
+
+    def summarize_by(
+        self, *args, label: str = str(), termination: bool = False, **kwargs
+    ):
         """Add an analysis node without a termination signal at the extremites of the branches.
-        
+
         This is a convenience method equivalent to analyze_by() with termination=False.
         Nodes added with this method allow further splits to be added after them,
         enabling intermediate summary statistics in the tree.
-        
+
         Args:
             *args: Additional positional arguments representing analysis expressions.
             label (str, optional): The label for the analysis node. Defaults to an empty string.
             termination (bool, optional): Indicates if this node is a termination node. Defaults to False.
             **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
-        
+
         Returns:
             SplitNode: The modified SplitNode with the new summary node added.
-        
+
         Examples:
             >>> node = SplitNode(expr='df.Gender')
             >>> node = node.summarize_by(intermediate_count=lambda df: len(df))
             >>> node = node.split_by('df.Country')  # Can still add splits
-        
+
         See Also:
             analyze_by : Add terminal analysis nodes.
             summarize_at_by : Add summary at a specific path.
         """
 
-        self.analyze_by(*args, label = label, termination = termination, **kwargs)
+        self.analyze_by(*args, label=label, termination=termination, **kwargs)
         return self
 
-    def summarize_at_by(self, path: list, *args, label: str = str(), termination: bool = False, **kwargs):
+    def summarize_at_by(
+        self, path: list, *args, label: str = str(), termination: bool = False, **kwargs
+    ):
         """Add an analysis node without a termination signal at a specific path in the tree.
-        
+
         This is a convenience method equivalent to analyze_at_by() with termination=False.
         Allows adding intermediate summary statistics at a specific location in the tree.
-        
+
         Args:
             path (list): A list representing the path where the summary node should be added.
                 Use ["*"] to apply to all branches at a given level.
@@ -859,10 +1035,10 @@ class SplitNode(list):
             label (str, optional): The label for the analysis node. Defaults to an empty string.
             termination (bool, optional): Indicates if this node is a termination node. Defaults to False.
             **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
-        
+
         Returns:
             SplitNode: The modified SplitNode with the new summary node added.
-        
+
         Examples:
             >>> tree = AnalysisTree()
             >>> tree.split_by('df.Gender', label="Gender")
@@ -875,10 +1051,19 @@ class SplitNode(list):
             analyze_at_by : Add terminal analysis at a specific path.
             summarize_by : Add summary at all leaf nodes.
         """
-        self.analyze_at_by(path = path, *args, label = label, termination = termination, **kwargs)
+        self.analyze_at_by(
+            path=path, *args, label=label, termination=termination, **kwargs
+        )
         return self
-    
-    def cross_analyze_by(self, *args, label: str = str(), ref_lvl: str = str(), termination: bool = True, **kwargs):
+
+    def cross_analyze_by(
+        self,
+        *args,
+        label: str = str(),
+        ref_lvl: str = str(),
+        termination: bool = True,
+        **kwargs,
+    ):
         """Add a cross-analysis node at the extremites of the branches.
         Args:
             *args: Additional positional arguments representing analysis expressions.
@@ -896,23 +1081,39 @@ class SplitNode(list):
         """
         is_split_node = [isinstance(x, SplitNode) for x in self]
         # length 0 OR (no split node and no termination signal)
-        if ((len(is_split_node) == 0) or (not any(is_split_node))):
-            self.append(CrossAnalysisNode(*args, label = label, ref_lvl = ref_lvl, termination = termination, **kwargs))
+        if (len(is_split_node) == 0) or (not any(is_split_node)):
+            self.append(
+                CrossAnalysisNode(
+                    *args,
+                    label=label,
+                    ref_lvl=ref_lvl,
+                    termination=termination,
+                    **kwargs,
+                )
+            )
 
         else:
             for i in range(len(self)):
-                    if isinstance(self[i], SplitNode):
-                        self[i] = self[i].cross_analyze_by(*args, label = label, ref_lvl = ref_lvl, termination = termination, **kwargs)
+                if isinstance(self[i], SplitNode):
+                    self[i] = self[i].cross_analyze_by(
+                        *args,
+                        label=label,
+                        ref_lvl=ref_lvl,
+                        termination=termination,
+                        **kwargs,
+                    )
 
         return self
 
-#endregion
 
-#region AnalysisNode
+# endregion
 
-class AnalysisNode():
+# region AnalysisNode
+
+
+class AnalysisNode:
     """A class representing how data should be analyzed.
-    
+
     Attributes:
         analysis (dict): A dictionary with keys as the names of the analyses and values as the expressions.
         analysis_str (str): A string representation of the analysis expressions.
@@ -929,11 +1130,11 @@ class AnalysisNode():
             **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
         Raises:
             AssertionError: If no analysis expressions are provided.
-        Returns:    
+        Returns:
             None
         Examples:
             >>> AnalysisNode(m = "np.mean(df.A)", s = "np.std(df.B)")
-            >>> AnalysisNode("np.mean(df.A)", "np.std(df.B)", label = "Summary Stats") 
+            >>> AnalysisNode("np.mean(df.A)", "np.std(df.B)", label = "Summary Stats")
             >>> AnalysisNode("np.mean(df.A)", "np.std(df.B)", label = "Summary Stats", termination = False)
         """
 
@@ -941,41 +1142,43 @@ class AnalysisNode():
         assert len(analysis) > 0, "At least one analysis must be provided"
 
         self.analysis = analysis
-         
+
         # take the first element of analysis
-        self.analysis_str = {k: analysis_to_string(v) for k,v in analysis.items()}
+        self.analysis_str = {k: analysis_to_string(v) for k, v in analysis.items()}
         self.label = label
         self.termination = termination
 
     def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the analysis node.
-        
+
         Args:
             ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
             is_last (bool): Whether this is the last child of its parent. Defaults to True.
             prefix (str): The prefix string from parent levels. Defaults to "".
-            
+
         Returns:
             str: Formatted representation of the analysis and its computations.
         """
         # Choose connector based on position
         connector = "└─ " if is_last else "├─ "
         node_header = prefix + connector + f"Analysis Node: {self.label}\n"
-        
+
         # Build prefix for analysis details
         detail_prefix = prefix + ("   " if is_last else "│  ")
-        
+
         # Format analysis details with box-drawing characters
         analysis_items = list(self.analysis_str.items())
         analysis_lines = []
         for i, (key, value) in enumerate(analysis_items):
-            detail_is_last = (i == len(analysis_items) - 1)
+            detail_is_last = i == len(analysis_items) - 1
             detail_connector = "└─ " if detail_is_last else "├─ "
-            analysis_lines.append(detail_prefix + detail_connector + f"{key}: {value}\n")
-        
+            analysis_lines.append(
+                detail_prefix + detail_connector + f"{key}: {value}\n"
+            )
+
         return node_header + "".join(analysis_lines)
-    
-    def run(self, data, environ = None, denom=None, _N=None) -> DataNode:
+
+    def run(self, data, environ=None, denom=None, _N=None) -> DataNode:
         """Run the analysis node on the provided DataFrame.
         Args:
             data (pd.DataFrame): The DataFrame to analyze.
@@ -994,16 +1197,18 @@ class AnalysisNode():
             >>> assert res.summary == {"m": np.float64(15), "s": np.float64(0)}
         """
 
-        res = scope_eval(df = data, extra_context = environ, _N = _N, **self.analysis)
-        return DataNode(data = data, summary = res, label = self.label, depth = 0, _N = _N)
+        res = scope_eval(df=data, extra_context=environ, _N=_N, **self.analysis)
+        return DataNode(data=data, summary=res, label=self.label, depth=0, _N=_N)
 
-#endregion
 
-#region CrossAnalysisNode
+# endregion
+
+# region CrossAnalysisNode
+
 
 class CrossAnalysisNode(list):
     """A class representing how data should be cross-analyzed.
-    
+
     Attributes:
         analysis (dict): A dictionary with keys as the names of the analyses and values as the expressions.
         analysis_str (str): A string representation of the analysis expressions.
@@ -1012,7 +1217,14 @@ class CrossAnalysisNode(list):
         termination (bool): Whether this node is a termination node.
     """
 
-    def __init__(self, *args, label: str = str(), ref_lvl: str = str(), termination: bool = True, **kwargs):
+    def __init__(
+        self,
+        *args,
+        label: str = str(),
+        ref_lvl: str = str(),
+        termination: bool = True,
+        **kwargs,
+    ):
         """Initializes the CrossAnalysisNode object.
         Args:
             *args: Additional positional arguments representing analysis expressions.
@@ -1022,11 +1234,11 @@ class CrossAnalysisNode(list):
             **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
         Raises:
             AssertionError: If no analysis expressions are provided.
-        Returns:    
+        Returns:
             None
 
         Examples:
-            >>> CrossAnalysisNode("np.mean(df1.A) - np.mean(df2.A)", "np.median(df1.B) - np.median(df2.B)", label = "Summary Stats") 
+            >>> CrossAnalysisNode("np.mean(df1.A) - np.mean(df2.A)", "np.median(df1.B) - np.median(df2.B)", label = "Summary Stats")
         """
 
         analysis = {k: k for k in args} | kwargs
@@ -1035,42 +1247,44 @@ class CrossAnalysisNode(list):
         super().__init__(args)
 
         self.analysis = analysis
-         
+
         # take the first element of analysis
-        self.analysis_str = {k: analysis_to_string(v) for k,v in analysis.items()}
+        self.analysis_str = {k: analysis_to_string(v) for k, v in analysis.items()}
         self.label = label
         self.ref_lvl = ref_lvl
         self.termination = termination
 
     def __str__(self, ind: int = 0, is_last: bool = True, prefix: str = ""):
         """Return a string representation of the cross-analysis node.
-        
+
         Args:
             ind (int): Indentation level for nested display. Defaults to 0 (deprecated, use prefix).
             is_last (bool): Whether this is the last child of its parent. Defaults to True.
             prefix (str): The prefix string from parent levels. Defaults to "".
-            
+
         Returns:
             str: Formatted representation of the cross-analysis and its computations.
         """
         # Choose connector based on position
         connector = "└─ " if is_last else "├─ "
         node_header = prefix + connector + f"Cross Analysis Node: {self.label}\n"
-        
+
         # Build prefix for analysis details
         detail_prefix = prefix + ("   " if is_last else "│  ")
-        
+
         # Format analysis details with box-drawing characters
         analysis_items = list(self.analysis_str.items())
         analysis_lines = []
         for i, (key, value) in enumerate(analysis_items):
-            detail_is_last = (i == len(analysis_items) - 1)
+            detail_is_last = i == len(analysis_items) - 1
             detail_connector = "└─ " if detail_is_last else "├─ "
-            analysis_lines.append(detail_prefix + detail_connector + f"{key}: {value}\n")
-        
+            analysis_lines.append(
+                detail_prefix + detail_connector + f"{key}: {value}\n"
+            )
+
         return node_header + "".join(analysis_lines)
-    
-    def run(self, data: dict, environ = None, denom=None, _N=None) -> DataNode:
+
+    def run(self, data: dict, environ=None, denom=None, _N=None) -> DataNode:
         """Run the cross-analysis node on the provided DataFrames.
         Args:
             data (dict): A dictionary containing two DataFrames to analyze. Keys should be "df" and "ref_df".
@@ -1080,12 +1294,22 @@ class CrossAnalysisNode(list):
             DataNode: The resulting DataNode after running the cross-analysis node.
         """
 
-        res = scope_cross_eval(df = data["df"], ref_df = data["ref_df"], extra_context = environ, _N = _N, **self.analysis)
-        return DataNode(data = data["df"], summary = res, label = self.label, depth = 0, _N = _N) # TODO: do we need another class for cross data node?
+        res = scope_cross_eval(
+            df=data["df"],
+            ref_df=data["ref_df"],
+            extra_context=environ,
+            _N=_N,
+            **self.analysis,
+        )
+        return DataNode(
+            data=data["df"], summary=res, label=self.label, depth=0, _N=_N
+        )  # TODO: do we need another class for cross data node?
 
-#endregion
 
-#region JSON
+# endregion
+
+# region JSON
+
 
 def _node_to_dict(node) -> dict:
     """Serialize a single tree node to a JSON-serializable dict.
@@ -1129,7 +1353,9 @@ def _node_to_dict(node) -> dict:
         }
     elif isinstance(node, SplitNode):
         if node.expr is not None:
-            expr_ser = _callable_to_expr_str(node.expr) if callable(node.expr) else node.expr
+            expr_ser = (
+                _callable_to_expr_str(node.expr) if callable(node.expr) else node.expr
+            )
             split_data = {"expr": expr_ser}
         else:
             kwexpr_ser = {
@@ -1198,5 +1424,5 @@ def _dict_to_node(data: dict):
     else:
         raise ValueError(f"Unknown node type: {node_type!r}")
 
-#endregion
 
+# endregion

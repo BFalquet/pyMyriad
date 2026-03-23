@@ -18,11 +18,11 @@ Expression Evaluation Examples:
     >>> # String expression
     >>> scope_eval("np.mean(df.Income)", df, {'np': np, 'pd': pd})
     65000.0
-    
+
     >>> # Lambda function
     >>> scope_eval(lambda df: np.mean(df.Income), df)
     65000.0
-    
+
     >>> # Cross-level comparison
     >>> scope_cross_eval(
     ...     lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A),
@@ -49,55 +49,56 @@ _default_imports_warned = False
 
 def _get_default_imports():
     """Get default imports (numpy as np, pandas as pd) if available.
-    
+
     Returns a dict with 'np' and 'pd' keys if those modules are importable.
     Prints a one-time warning when defaults are used.
     """
     global _default_imports_warned
-    
+
     if _DEFAULT_IMPORTS:
         return _DEFAULT_IMPORTS
-    
+
     try:
         import numpy as np
-        _DEFAULT_IMPORTS['np'] = np
+
+        _DEFAULT_IMPORTS["np"] = np
     except ImportError:
         pass
-    
-    _DEFAULT_IMPORTS['pd'] = pd  # pandas is already imported
-    
+
+    _DEFAULT_IMPORTS["pd"] = pd  # pandas is already imported
+
     return _DEFAULT_IMPORTS
 
 
 def _inject_default_imports(ctx: dict, warn: bool = True) -> dict:
     """Inject default imports into context if not already present.
-    
+
     Args:
         ctx: The context dictionary to update
         warn: Whether to warn about injecting defaults
-    
+
     Returns:
         Updated context dictionary with defaults injected
     """
     global _default_imports_warned
-    
+
     defaults = _get_default_imports()
     injected = []
-    
+
     for name, module in defaults.items():
         if name not in ctx:
             ctx[name] = module
             injected.append(name)
-    
+
     if warn and injected and not _default_imports_warned:
         _default_imports_warned = True
         warnings.warn(
             f"Auto-injected default imports ({', '.join(injected)}) for expression evaluation. "
             "To silence this warning, pass explicit environ={'np': np, ...} to run() or use lambda functions.",
             UserWarning,
-            stacklevel=6
+            stacklevel=6,
         )
-    
+
     return ctx
 
 
@@ -117,10 +118,10 @@ def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, _N=None, **k
     Examples:
         # String expressions (original behavior)
         >>> scope_eval(df=df, mean_a="np.mean(df.A)", std_b="np.std(df.B)")
-        
-        # Function expressions (new behavior)  
+
+        # Function expressions (new behavior)
         >>> scope_eval(df=df, mean_a=lambda df: np.mean(df.A), std_b=lambda df: np.std(df.B))
-        
+
         # Mixed usage
         >>> scope_eval(df=df, mean_a=lambda df: np.mean(df.A), count="len(df)")
 
@@ -135,7 +136,7 @@ def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, _N=None, **k
     ctx = {}
     if extra_context is not None:
         ctx.update(extra_context)
-    
+
     # Inject default imports (np, pd) if not already in context
     _inject_default_imports(ctx, warn=False)  # Warning handled at higher level
 
@@ -144,8 +145,8 @@ def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, _N=None, **k
     for name, expr_or_func in kwargs.items():
         if callable(expr_or_func):
             params = list(inspect.signature(expr_or_func).parameters.keys())
-            has_df = 'df' in params
-            has_N = '_N' in params
+            has_df = "df" in params
+            has_N = "_N" in params
             if has_df and has_N:
                 results[name] = expr_or_func(df=df, _N=_N)
             elif has_N:
@@ -158,34 +159,34 @@ def scope_eval(df: pd.DataFrame = None, extra_context: dict = None, _N=None, **k
 
     return results
 
-    
+
 def get_caller_globals():
     """Get the globals dictionary from the caller's frame (outside pyMyriad modules).
-    
+
     This function walks up the call stack and returns the globals from the first
     frame that is not part of the pyMyriad package. This allows expressions like
     'np.mean(df.A)' to work when numpy is imported in the user's code.
-    
+
     Returns:
         dict: The globals dictionary from the caller's frame, with default imports
               (numpy as np, pandas as pd) injected if not already present.
     """
     frame = inspect.currentframe()
-    pymyriad_path = __file__.rsplit('/', 1)[0]  # Directory containing this module
-    
+    pymyriad_path = __file__.rsplit("/", 1)[0]  # Directory containing this module
+
     # Walk up the stack to find the first frame outside pyMyriad
     while frame is not None:
         frame_file = frame.f_code.co_filename
-        
+
         # Check if this frame is outside the pyMyriad package
         if not frame_file.startswith(pymyriad_path):
             caller_globals = frame.f_globals.copy()
             # Inject default imports if not present
             _inject_default_imports(caller_globals, warn=True)
             return caller_globals
-        
+
         frame = frame.f_back
-    
+
     # Fallback: return empty dict with default imports
     ctx = {}
     _inject_default_imports(ctx, warn=True)
@@ -194,11 +195,11 @@ def get_caller_globals():
 
 def get_top_globals():
     """Get the globals dictionary from the caller's frame.
-    
+
     Note: This function is kept for backward compatibility but now uses
     get_caller_globals() which finds the caller's frame instead of the
     absolute top of the stack.
-    
+
     Returns:
         dict: The globals dictionary from the caller's frame.
     """
@@ -207,7 +208,7 @@ def get_top_globals():
 
 def analysis_to_string(analysis):
     """Convert an analysis expression to a string representation.
-    
+
     Args:
         analysis (str or function): The analysis expression, either as a string or a function.
     Returns:
@@ -226,9 +227,10 @@ def analysis_to_string(analysis):
             return "<function>"
     return str(analysis)
 
+
 def count_or_length(data: pd.DataFrame, id: str | list[str] | None) -> int:
     """Count the number of unique entities in the DataFrame based on the specified id column(s).
-    
+
     Args:
         data (pd.DataFrame): The DataFrame to analyze.
         id (str, list of str, or None): The column name(s) used to count unique entities.
@@ -251,7 +253,14 @@ def count_or_length(data: pd.DataFrame, id: str | list[str] | None) -> int:
     else:
         return data[id].nunique()
 
-def scope_cross_eval(df: pd.DataFrame = None, ref_df: pd.DataFrame = None, extra_context: dict = None, _N=None, **kwargs):
+
+def scope_cross_eval(
+    df: pd.DataFrame = None,
+    ref_df: pd.DataFrame = None,
+    extra_context: dict = None,
+    _N=None,
+    **kwargs,
+):
     """
     Evaluate expressions or execute functions comparing two DataFrames (df and ref_df).
     This function allows you to evaluate expressions or execute functions for cross-analysis,
@@ -268,10 +277,10 @@ def scope_cross_eval(df: pd.DataFrame = None, ref_df: pd.DataFrame = None, extra
     Examples:
         # String expressions comparing two DataFrames
         >>> scope_cross_eval(df=df, ref_df=ref_df, mean_diff="np.mean(df.A) - np.mean(ref_df.A)")
-        
+
         # Function expressions (must accept two arguments: df and ref_df)
         >>> scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A))
-        
+
         # Mixed usage
         >>> scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: df.A.mean() - ref_df.A.mean(), count="len(df)")
 
@@ -286,7 +295,7 @@ def scope_cross_eval(df: pd.DataFrame = None, ref_df: pd.DataFrame = None, extra
     ctx = {}
     if extra_context is not None:
         ctx.update(extra_context)
-    
+
     # Inject default imports (np, pd) if not already in context
     _inject_default_imports(ctx, warn=False)  # Warning handled at higher level
 
@@ -295,22 +304,24 @@ def scope_cross_eval(df: pd.DataFrame = None, ref_df: pd.DataFrame = None, extra
     for name, expr_or_func in kwargs.items():
         if callable(expr_or_func):
             params = list(inspect.signature(expr_or_func).parameters.keys())
-            has_df = 'df' in params
-            has_ref_df = 'ref_df' in params
-            has_N = '_N' in params
+            has_df = "df" in params
+            has_ref_df = "ref_df" in params
+            has_N = "_N" in params
             if has_N:
                 call_kwargs = {}
                 if has_df:
-                    call_kwargs['df'] = df
+                    call_kwargs["df"] = df
                 if has_ref_df:
-                    call_kwargs['ref_df'] = ref_df
-                call_kwargs['_N'] = _N
+                    call_kwargs["ref_df"] = ref_df
+                call_kwargs["_N"] = _N
                 results[name] = expr_or_func(**call_kwargs)
             else:
                 results[name] = expr_or_func(df, ref_df)
         else:
             # Treat as string expression
-            results[name] = eval(expr_or_func, ctx, {"df": df, "ref_df": ref_df, "_N": _N})
+            results[name] = eval(
+                expr_or_func, ctx, {"df": df, "ref_df": ref_df, "_N": _N}
+            )
 
     return results
 

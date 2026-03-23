@@ -8,7 +8,7 @@ from .listing import gt_table, simple_table, cascade_table
 from .tabular import format_statistics
 
 __all__ = [
-    "AnalysisTree", 
+    "AnalysisTree",
     "SplitNode",
     "AnalysisNode",
     "DataTree",
@@ -20,5 +20,5 @@ __all__ = [
     "gt_table",
     "simple_table",
     "cascade_table",
-    "format_statistics"
+    "format_statistics",
 ]
