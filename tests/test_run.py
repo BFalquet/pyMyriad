@@ -171,3 +171,84 @@ def test_denom_list_of_columns():
     result = a_tree.run(df)
     # 3 unique (PatientID, Visit) combinations: (P1,1), (P1,2), (P2,1), (P3,1) => 4
     assert result._N == [4]
+
+
+# --- drop_empty tests ---
+
+def test_drop_empty_false_keeps_empty_groups():
+    """drop_empty=False (default) keeps kwexpr levels with zero rows.
+
+    For expr-based splits, groupby only returns groups that exist in the data,
+    so empty groups can only arise from kwexpr-style splits where conditions are
+    explicitly defined but never satisfied.
+    """
+    df = pd.DataFrame({"A": [10, 20, 30]})
+    tree = (
+        AnalysisTree()
+        .split_by(
+            high="df.A > 100",   # nobody qualifies → empty DataFrame
+            low="df.A <= 100",
+            drop_empty=False,
+        )
+        .analyze_by(n=lambda df: len(df))
+    )
+    result = tree.run(df)
+    split = result["high-low"]
+    assert "low" in split
+    assert "high" in split  # kept despite having zero rows
+    assert len(split["high"]["0"].data) == 0
+
+
+def test_drop_empty_true_removes_empty_groups():
+    """drop_empty=True discards levels that have zero rows."""
+    df = pd.DataFrame({
+        "A": [10, 20, 30],
+        "B": [True, True, True],   # all True → False group will be empty
+    })
+    tree = (
+        AnalysisTree()
+        .split_by("df.B", drop_empty=True)
+        .analyze_by(n=lambda df: len(df))
+    )
+    result = tree.run(df)
+    split = result["df.B"]
+    assert "True" in split
+    assert "False" not in split
+
+
+def test_drop_empty_true_with_kwexpr():
+    """drop_empty=True also works with keyword-expression splits."""
+    df = pd.DataFrame({
+        "Income": [30000, 40000, 50000],
+    })
+    tree = (
+        AnalysisTree()
+        .split_by(
+            high="df.Income > 100000",   # nobody qualifies → empty
+            low="df.Income <= 100000",
+            drop_empty=True,
+        )
+        .analyze_by(n=lambda df: len(df))
+    )
+    result = tree.run(df)
+    split = result["high-low"]
+    assert "low" in split
+    assert "high" not in split
+
+
+def test_categorical_dtype_observed_only():
+    """Split on pd.Categorical column produces only observed groups (no ghost groups)."""
+    df = pd.DataFrame({
+        "Gender": pd.Categorical(["M", "M", "M"], categories=["M", "F"]),
+        "Income": [50000, 60000, 70000],
+    })
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender")
+        .analyze_by(n=lambda df: len(df))
+    )
+    result = tree.run(df)
+    split = result["df.Gender"]
+    assert "M" in split
+    # "F" has no rows in this data; observed=True means it should not appear
+    assert "F" not in split
