@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **JSON serialization / deserialization** for `AnalysisTree`, enabling interoperability with AI agents and external systems:
+  - `AnalysisTree.to_dict()` — serialize the full tree structure to a plain Python `dict`
+  - `AnalysisTree.to_json(path=None, indent=2)` — serialize to a JSON string; optionally write to a file
+  - `AnalysisTree.from_dict(data)` — reconstruct a tree from a `dict`
+  - `AnalysisTree.from_json(source)` — reconstruct from a JSON string or file path (auto-detected)
+  - Lambda functions are serialized by extracting their body expression (e.g. `lambda df: np.mean(df.Income)` → `"np.mean(df.Income)"`) via `ast` + `inspect`, enabling round-trips through JSON
+  - New private helper `_callable_to_expr_str()` in `utils.py` for the lambda → string conversion
+  - New private helpers `_node_to_dict()` and `_dict_to_node()` in `analysis_tree.py` for recursive node serialization/deserialization
+  - New guide **docs/guides/interoperability.rst** documenting the JSON schema, lambda handling, and an end-to-end agent workflow example
 - `drop_empty` parameter on `split_by()`, `split_at_by()`, and `split_at_root_by()` (and on `SplitNode` directly) to optionally discard split levels that produce an empty DataFrame. Defaults to `False` (backward-compatible). Useful when conditional splits may not be satisfied by every subset of the data.
 - Categorical column support: `SplitNode.run()` now passes `observed=True` to `pandas.groupby`, so splitting on a `pd.Categorical` column only returns groups that actually appear in the data (no phantom empty groups for absent categories). This also silences the pandas ≥ 2.2 `FutureWarning` about the `observed` default changing.
 

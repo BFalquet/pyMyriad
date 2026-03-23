@@ -314,3 +314,56 @@ def scope_cross_eval(df: pd.DataFrame = None, ref_df: pd.DataFrame = None, extra
             results[name] = eval(expr_or_func, ctx, {"df": df, "ref_df": ref_df, "_N": _N})
 
     return results
+
+
+def _callable_to_expr_str(func) -> str:
+    """Extract a lambda body as an eval-able string expression for JSON serialization.
+
+    For lambda functions, extracts the body expression so that it can be stored
+    as a plain string and evaluated later.  For example,
+    ``lambda df: np.mean(df.Income)`` becomes ``"np.mean(df.Income)"``.
+
+    Non-lambda callables (regular functions) cannot be reduced to a single
+    expression: a warning is issued and ``"<unserializable>"`` is returned.
+
+    Args:
+        func: A callable to convert.
+
+    Returns:
+        str: The body expression string, or ``"<unserializable>"`` if extraction
+        fails or the callable is not a lambda.
+    """
+    if not callable(func):
+        return str(func)
+    if getattr(func, "__name__", None) != "<lambda>":
+        warnings.warn(
+            f"Non-lambda callable '{getattr(func, '__name__', repr(func))}' cannot be "
+            "serialized to JSON. Use a string expression or a lambda function instead. "
+            "Storing as '<unserializable>'.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return "<unserializable>"
+    try:
+        source_lines = inspect.getsourcelines(func)[0]
+        source = "".join(source_lines).strip()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Lambda):
+                body_str = ast.get_source_segment(source, node.body)
+                if body_str is not None:
+                    return body_str.strip()
+    except (OSError, TypeError) as exc:
+        warnings.warn(
+            f"Could not retrieve source for lambda: {exc}. "
+            "Storing as '<unserializable>'.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return "<unserializable>"
+    warnings.warn(
+        "Could not extract lambda body from source. Storing as '<unserializable>'.",
+        UserWarning,
+        stacklevel=3,
+    )
+    return "<unserializable>"
