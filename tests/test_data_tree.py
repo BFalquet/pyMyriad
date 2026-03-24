@@ -1,5 +1,4 @@
 import json
-import math
 import tempfile
 
 import numpy as np
