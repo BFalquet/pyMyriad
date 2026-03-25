@@ -1,6 +1,6 @@
 [project]
 name = "pymyriad"
-version = "0.1.2"
+version = "0.1.3"
 description = "Data analysis as a tree"
 readme = "README.md"
 license = "Apache-2.0"
