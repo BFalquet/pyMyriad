@@ -32,8 +32,59 @@ See also:
     - listing.py: Table generation from DataTree
 """
 
+import json
+import math
+
 import pandas as pd
+
 from .utils import analysis_to_string
+
+
+def _serialize_summary_value(val):
+    """Convert a summary value to a JSON-safe Python type.
+
+    Rules:
+    - ``None``, ``bool``, ``str`` are returned unchanged.
+    - ``int`` is returned unchanged.
+    - ``float`` is returned unchanged, **except** NaN and ±infinity which
+      become the strings ``"NaN"``, ``"Infinity"``, and ``"-Infinity"``.
+    - Numeric-like objects (e.g. ``numpy.int64``, ``numpy.float64``) are
+      coerced to the corresponding native Python ``int`` or ``float``; the
+      same NaN/infinity rule is then applied to coerced floats.
+    - Everything else is converted via ``str(val)``.
+
+    Args:
+        val: The value to serialize.
+
+    Returns:
+        A JSON-serializable Python object.
+    """
+    if val is None or isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val
+    if isinstance(val, int):
+        return val
+    if isinstance(val, float):
+        if math.isnan(val):
+            return "NaN"
+        if math.isinf(val):
+            return "Infinity" if val > 0 else "-Infinity"
+        return val
+    # Attempt numeric coercion (handles numpy scalars, etc.)
+    try:
+        float_val = float(val)
+        if math.isnan(float_val):
+            return "NaN"
+        if math.isinf(float_val):
+            return "Infinity" if float_val > 0 else "-Infinity"
+        # Preserve integer semantics for whole numbers
+        int_val = int(val)
+        if float_val == int_val:
+            return int_val
+        return float_val
+    except (TypeError, ValueError, OverflowError):
+        return str(val)
 
 
 class DataNode:
@@ -102,6 +153,29 @@ class DataNode:
             )
 
         return node_header + "".join(summary_lines)
+
+    def to_dict(self) -> dict:
+        """Serialize this node to a JSON-compatible dictionary.
+
+        Only the ``summary`` is included (not the raw ``data`` attribute).
+        Non-finite floats become string representations (``"NaN"``,
+        ``"Infinity"``, ``"-Infinity"``).  Other non-serializable values
+        are converted via :func:`str`.
+
+        Returns:
+            dict: A JSON-serializable representation of this node.
+
+        See Also:
+            DataTree.to_json : Serialize the full result tree to JSON.
+        """
+        return {
+            "type": "DataNode",
+            "label": self.label,
+            "_N": self._N,
+            "summary": {
+                k: _serialize_summary_value(v) for k, v in (self.summary or {}).items()
+            },
+        }
 
     def __flatten__(
         self,
@@ -193,6 +267,23 @@ class SplitDataNode(dict):
             result.append(child.__str__(is_last=child_is_last, prefix=child_prefix))
 
         return "".join(result)
+
+    def to_dict(self) -> dict:
+        """Serialize this split node to a JSON-compatible dictionary.
+
+        Returns:
+            dict: A JSON-serializable representation of this node with keys
+            ``type``, ``split_var``, ``label``, and ``children``.
+
+        See Also:
+            DataTree.to_json : Serialize the full result tree to JSON.
+        """
+        return {
+            "type": "SplitDataNode",
+            "split_var": self.split_var,
+            "label": self.label,
+            "children": {k: v.to_dict() for k, v in self.items()},
+        }
 
     def __flatten__(
         self,
@@ -314,6 +405,23 @@ class LvlDataNode(dict):
 
         return "".join(result)
 
+    def to_dict(self) -> dict:
+        """Serialize this level node to a JSON-compatible dictionary.
+
+        Returns:
+            dict: A JSON-serializable representation of this node with keys
+            ``type``, ``split_lvl``, ``_N``, and ``children``.
+
+        See Also:
+            DataTree.to_json : Serialize the full result tree to JSON.
+        """
+        return {
+            "type": "LvlDataNode",
+            "split_lvl": self.split_lvl,
+            "_N": self._N,
+            "children": {k: v.to_dict() for k, v in self.items()},
+        }
+
     def __flatten__(
         self,
         path=(),
@@ -416,6 +524,78 @@ class DataTree(dict):
             is_last = i == len(self) - 1
             result.append(node.__str__(is_last=is_last, prefix=""))
         return "".join(result)
+
+    def to_dict(self) -> dict:
+        """Serialize the result tree to a JSON-compatible dictionary.
+
+        The dictionary captures the full hierarchical result structure,
+        including every split, level, and analysis node with its computed
+        summary statistics.  Raw data (``DataNode.data``) is intentionally
+        excluded to keep the output concise and suitable for LLM consumption.
+
+        Non-finite float values in any summary dictionary are converted to
+        string representations (``"NaN"``, ``"Infinity"``, ``"-Infinity"``).
+        Other non-serializable objects are converted via :func:`str`.
+
+        Returns:
+            dict: A JSON-serializable representation of the result tree with
+            keys ``type``, ``_N``, and ``children``.
+
+        See Also:
+            to_json : Serialize to a JSON string (optionally writing to a file).
+
+        Examples:
+            >>> import numpy as np, pandas as pd
+            >>> from pyMyriad import AnalysisTree
+            >>> df = pd.DataFrame({"A": [1, 2, 3], "G": ["M", "F", "M"]})
+            >>> result = AnalysisTree().split_by("df.G").analyze_by(n="len(df)").run(df, environ={"np": np})
+            >>> d = result.to_dict()
+            >>> d["type"]
+            'DataTree'
+        """
+        return {
+            "type": "DataTree",
+            "_N": self._N,
+            "children": {k: v.to_dict() for k, v in self.items()},
+        }
+
+    def to_json(self, path: str = None, indent: int = 2) -> str:
+        """Serialize the result tree to a JSON string.
+
+        Produces a human-readable JSON representation of all analysis
+        results, suitable for sharing with LLM agents or storing alongside
+        an analysis plan.  The JSON structure mirrors the tree hierarchy:
+        splits, levels, and analysis nodes with their computed statistics.
+
+        Args:
+            path (str, optional): If provided, the JSON is also written to
+                this file.  The directory must already exist.
+                Defaults to ``None``.
+            indent (int, optional): Number of spaces used for indentation.
+                Defaults to ``2``.
+
+        Returns:
+            str: The JSON string representation of the result tree.
+
+        See Also:
+            to_dict : Serialize to a plain Python dictionary.
+            AnalysisTree.to_json : Serialize the *analysis plan* (not results).
+
+        Examples:
+            >>> import numpy as np, pandas as pd
+            >>> from pyMyriad import AnalysisTree
+            >>> df = pd.DataFrame({"A": [1, 2, 3], "G": ["M", "F", "M"]})
+            >>> result = AnalysisTree().split_by("df.G").analyze_by(n="len(df)").run(df, environ={"np": np})
+            >>> json_str = result.to_json()
+            >>> import json; parsed = json.loads(json_str)
+            >>> parsed["type"]
+            'DataTree'
+        """
+        result = json.dumps(self.to_dict(), indent=indent)
+        if path is not None:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(result)
+        return result
 
     def __flatten__(self, pivot: str = (), data: bool = False) -> pd.DataFrame:
         """Flatten a DataTree into a DataFrame.

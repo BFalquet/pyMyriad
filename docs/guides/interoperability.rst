@@ -320,9 +320,240 @@ A typical agent interaction looks like this:
    print(result)
 
 
+Exporting Results to JSON
+--------------------------
+
+In addition to serializing the *analysis plan*, you can serialize the
+*results* — the :class:`~pyMyriad.data_tree.DataTree` produced by
+:meth:`~pyMyriad.analysis_tree.AnalysisTree.run` — so that computed
+statistics can be shared with LLM agents or other downstream tools.
+
+Why export results?
+~~~~~~~~~~~~~~~~~~~
+
+An LLM agent working with your analysis may need to:
+
+* **Interpret** computed statistics in natural language.
+* **Compare** results across runs or datasets.
+* **Route** downstream actions based on specific values (e.g. flag anomalies).
+* **Store** results alongside the plan for reproducibility.
+
+Basic usage
+~~~~~~~~~~~
+
+Call :meth:`~pyMyriad.data_tree.DataTree.to_json` on the result returned by
+:meth:`~pyMyriad.analysis_tree.AnalysisTree.run`:
+
+.. code-block:: python
+
+   import numpy as np
+   import pandas as pd
+   from pyMyriad import AnalysisTree
+
+   df = pd.DataFrame({
+       "Gender": ["M", "F", "M", "F", "M", "F"],
+       "Income": [55000, 72000, 48000, 81000, 60000, 67000],
+   })
+
+   tree = (AnalysisTree()
+       .split_by("df.Gender", label="Gender")
+       .analyze_by(
+           n=lambda df: len(df),
+           mean_income=lambda df: np.mean(df.Income),
+           label="stats",
+       ))
+
+   result = tree.run(df, environ={"np": np})
+   json_str = result.to_json()
+   print(json_str)
+
+The output is a compact, hierarchical JSON document:
+
+.. code-block:: json
+
+   {
+     "type": "DataTree",
+     "_N": null,
+     "children": {
+       "Gender": {
+         "type": "SplitDataNode",
+         "split_var": "df.Gender",
+         "label": "Gender",
+         "children": {
+           "F": {
+             "type": "LvlDataNode",
+             "split_lvl": "F",
+             "_N": null,
+             "children": {
+               "stats": {
+                 "type": "DataNode",
+                 "label": "stats",
+                 "_N": null,
+                 "summary": {
+                   "n": 3,
+                   "mean_income": 73333.333
+                 }
+               }
+             }
+           },
+           "M": {
+             "type": "LvlDataNode",
+             "split_lvl": "M",
+             "_N": null,
+             "children": {
+               "stats": {
+                 "type": "DataNode",
+                 "label": "stats",
+                 "_N": null,
+                 "summary": {
+                   "n": 3,
+                   "mean_income": 54333.333
+                 }
+               }
+             }
+           }
+         }
+       }
+     }
+   }
+
+Writing directly to a file
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Pass a file path to write the results at the same time:
+
+.. code-block:: python
+
+   result.to_json("analysis_results.json")
+
+The method always returns the JSON string regardless.
+
+
+JSON structure reference
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The result JSON mirrors the four tree node types.
+
+**DataTree** (root)
+
+.. code-block:: json
+
+   {
+     "type": "DataTree",
+     "_N": null,
+     "children": { ... }
+   }
+
+``_N`` is ``null`` unless a denominator was set on the
+:class:`~pyMyriad.analysis_tree.AnalysisTree` (see
+:meth:`~pyMyriad.analysis_tree.AnalysisTree.__init__`).
+
+**SplitDataNode**
+
+.. code-block:: json
+
+   {
+     "type": "SplitDataNode",
+     "split_var": "df.Gender",
+     "label": "Gender",
+     "children": { ... }
+   }
+
+**LvlDataNode**
+
+.. code-block:: json
+
+   {
+     "type": "LvlDataNode",
+     "split_lvl": "F",
+     "_N": null,
+     "children": { ... }
+   }
+
+**DataNode** (leaf)
+
+.. code-block:: json
+
+   {
+     "type": "DataNode",
+     "label": "stats",
+     "_N": null,
+     "summary": {
+       "n": 3,
+       "mean_income": 73333.333
+     }
+   }
+
+Only the ``summary`` dictionary is exported. The raw ``data`` attribute
+(the underlying :class:`pandas.DataFrame`) is intentionally excluded to keep
+output compact and suitable for LLM context windows.
+
+
+Special value handling
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Input value
+     - JSON output
+   * - ``float("nan")``, ``numpy.nan``
+     - ``"NaN"`` (string)
+   * - ``float("inf")``, ``numpy.inf``
+     - ``"Infinity"`` (string)
+   * - ``float("-inf")``, ``-numpy.inf``
+     - ``"-Infinity"`` (string)
+   * - ``numpy.int64``, ``numpy.float64``
+     - Native Python ``int`` / ``float``
+   * - Other non-serializable objects
+     - ``str(val)`` fallback
+
+This ensures the JSON is always valid and that LLM agents receive a
+human-readable representation of edge-case values.
+
+
+Combined plan + results workflow
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Share both the analysis *plan* and *results* with an LLM agent in a single
+call:
+
+.. code-block:: python
+
+   import json
+   import numpy as np
+   import pandas as pd
+   from pyMyriad import AnalysisTree
+
+   df = pd.DataFrame({
+       "Treatment": ["Drug", "Placebo"] * 50,
+       "Outcome": [10.5, 8.2] * 50,
+   })
+
+   tree = (AnalysisTree()
+       .split_by("df.Treatment", label="Treatment")
+       .analyze_by(
+           n=lambda df: len(df),
+           mean_outcome=lambda df: np.mean(df.Outcome),
+           label="outcomes",
+       ))
+
+   AnalysisTree.set_default_environ({"np": np})
+   result = tree.run(df)
+
+   payload = {
+       "plan": json.loads(tree.to_json()),
+       "results": json.loads(result.to_json()),
+   }
+   # payload can now be passed directly to an LLM agent
+
+
 See Also
 --------
 
 * :doc:`concepts` — understanding the tree structure
 * :doc:`workflows` — common analysis patterns
 * :class:`~pyMyriad.analysis_tree.AnalysisTree` — full API reference
+* :class:`~pyMyriad.data_tree.DataTree` — result tree API reference
+
