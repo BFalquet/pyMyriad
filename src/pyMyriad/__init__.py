@@ -6,6 +6,7 @@ from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
 from .plots import forest_plot, distribution_plot
 from .listing import gt_table, simple_table, cascade_table
 from .tabular import format_statistics
+from .plot_table import gt_forest_table
 
 __all__ = [
     "AnalysisTree",
@@ -21,4 +22,5 @@ __all__ = [
     "simple_table",
     "cascade_table",
     "format_statistics",
+    "gt_forest_table",
 ]

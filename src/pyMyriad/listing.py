@@ -271,7 +271,7 @@ def _create_table(
 
     elif pivot_statistics:
         # Pivot only by statistics
-        pivot_columns = df["statistics"].unique().tolist()
+        pivot_columns = [c for c in df["statistics"].unique().tolist() if c is not None]
         df = df.pivot_table(
             index=["depth", "path_pivot", "label"],
             columns="statistics",
