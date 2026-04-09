@@ -370,137 +370,6 @@ def simple_table(
 
 # enregion
 
-
-def gt_table(
-    dtree: DataTree,
-    by: str = "",
-    *,
-    unnest=True,
-    cascade: bool = False,
-    split_path: bool = True,
-    suppress_duplicates: bool = True,
-    pivot_statistics: bool = False,
-    title: Optional[str] = "Analysis Summary",
-    subtitle: Optional[str] = None,
-    decimals: int = 3,
-) -> "GT":
-    """Create a Great Tables (gt) display table from a DataTree.
-
-    This builds on the long-form output of `flatten` and returns a nicely
-    printable table using the Python Great Tables package.
-
-    Args:
-            dtree: The DataTree to tabulate.
-            by: Split variable name(s) to pivot across columns. Use a string for a
-                    single split or an iterable of split labels. If empty, no pivoting
-                    is applied.
-            unnest: If True, the statisttics are represented in separate rows; if False,
-                    only the summary value is shown.
-            cascade: If True, include all tree nodes (splits, summaries, and analyses);
-                    otherwise only analysis rows are shown.
-            split_path: If True, split the path into separate hierarchical columns.
-            suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
-            pivot_statistics: If True, pivot statistics into columns instead of rows.
-                    Compatible with the `by` argument - when both are used, creates
-                    combined columns like "GroupName (statistic)".
-            title: Optional table title.
-            subtitle: Optional table subtitle.
-            decimals: Number of decimals for numeric formatting.
-
-    Returns:
-            A great_tables.GT object ready for display/printing.
-
-    Raises:
-            ImportError: If the great-tables package is not installed.
-    """
-
-    try:
-        from great_tables import GT
-    except Exception as e:
-        raise ImportError(
-            "great-tables is required for gt_table(). Install with `pip install great-tables`."
-        ) from e
-
-    # Choose the appropriate table function based on cascade parameter
-    table_func = cascade_table if cascade else simple_table
-    display_df = table_func(
-        dtree,
-        by=by,
-        split_path=split_path,
-        suppress_duplicates=suppress_duplicates,
-        pivot_statistics=pivot_statistics,
-    )
-
-    # Build the GT table
-    tbl = GT(display_df)
-
-    if title or subtitle:
-        tbl = tbl.tab_header(title=title, subtitle=subtitle)
-
-    remaining_level_cols = [c for c in display_df.columns if c.startswith("_Level_")]
-
-    # Format numeric columns
-    numeric_cols = []
-    for col in display_df.columns:
-        if col not in remaining_level_cols + ["Statistic", "Pivot"]:
-            # Check if column is numeric
-            if pd.api.types.is_numeric_dtype(display_df[col]):
-                numeric_cols.append(col)
-
-    if numeric_cols:
-        tbl = tbl.fmt_number(columns=numeric_cols, decimals=decimals)
-
-    # Add spanners for hierarchical levels if we have multiple levels
-    if len(remaining_level_cols) > 1:
-        try:
-            tbl = tbl.tab_spanner(label="Hierarchy", columns=remaining_level_cols)
-        except Exception:
-            pass
-
-    # Add spanners for pivot groups when using pivot_statistics with by
-    if pivot_statistics and by != "":
-        try:
-            # Identify columns with the pattern "GroupName||statistic"
-            pivot_cols = [col for col in display_df.columns if "||" in str(col)]
-
-            if pivot_cols:
-                # Extract unique group names and organize columns
-                group_dict = {}
-                col_rename = {}
-
-                for col in pivot_cols:
-                    # Split on the separator
-                    parts = col.split("||")
-                    if len(parts) == 2:
-                        group_name, stat_name = parts
-                        if group_name not in group_dict:
-                            group_dict[group_name] = []
-                        group_dict[group_name].append(col)
-                        # Rename column to just the statistic name
-                        col_rename[col] = stat_name
-
-                # Rename columns to remove group names
-                tbl = tbl.cols_label(**col_rename)
-
-                # Add a spanner for each group
-                for group_name, cols in group_dict.items():
-                    if len(cols) > 0:
-                        tbl = tbl.tab_spanner(label=group_name, columns=cols)
-        except Exception:
-            pass
-
-    # Style options
-    try:
-        tbl = tbl.opt_align_table_header(align="left")
-        tbl = tbl.tab_options(
-            table_font_size="12px",
-            heading_background_color="#f8f9fa",
-        )
-    except Exception:
-        pass
-
-    return tbl
-
 def _create_cascade_table(
     dtree: DataTree,
     by: str = "",
@@ -523,7 +392,7 @@ def _create_cascade_table(
     # Case 1: by = "" and pivot_statistics = False: Just show all rows in long format, no pivoting
     if by == "" and not pivot_statistics:
         # df is already in the correct format. Just some cleanup and column selection. (to create column _level_0, _level_1, etc. from path_pivot if split_path is True)
-        df = df[["path_pivot", "pivot_lvl", "label", "statistics", "values"]].copy()
+        df = df[["path_pivot", "label", "statistics", "values"]].copy()
 
 	# Case 2: by != "" and pivot_statistics = False: Pivot by split variable, but keep non-analysis rows as single rows
     elif by != "" and not pivot_statistics:
@@ -552,19 +421,18 @@ def _create_cascade_table(
 
 	# Case 3: by = "" and pivot_statistics = True: Pivot by statistics only.
     elif by == "" and pivot_statistics:
-        df = df[["path_pivot", "pivot_lvl", "label", "statistics", "values"]].copy()
+        df = df[["path_pivot", "label", "statistics", "values"]].copy()
         
-		# Ticky bit: Remove the "analysis" string from pivot_lvl if it is the last element to have the stats on the same row as the split level row.
+		# Ticky bit: Remove the "analysis" string from path_pivot if it is the last element to have the stats on the same row as the split level row.
         df["path_pivot"] = df["path_pivot"].apply(
 			lambda x: x[:-1] if isinstance(x, list) and len(x) > 0 and x[-1] == "analysis" else x
 		)
 	
 		# Join the elements of path_pivot into a single string for pivoting
         df["path_pivot"] = _merge_path_into_string(df, path_col="path_pivot")["path_pivot"]
-        df["pivot_lvl"] = _merge_path_into_string(df, path_col="pivot_lvl")["pivot_lvl"]
 
         df_pivot = df.pivot_table(
-			index=["path_pivot", "pivot_lvl", "label"],
+			index=["path_pivot", "label"],
 			columns="statistics",
 			values="values",
 			aggfunc="first",
@@ -683,3 +551,136 @@ def cascade_table(
         table_proc = _suppress_duplicate_values(table_proc, pivot_level_cols)
         
     return table_proc
+
+
+
+
+def gt_table(
+    dtree: DataTree,
+    by: str = "",
+    *,
+    unnest=True,
+    cascade: bool = False,
+    split_path: bool = True,
+    suppress_duplicates: bool = True,
+    pivot_statistics: bool = False,
+    title: Optional[str] = "Analysis Summary",
+    subtitle: Optional[str] = None,
+    decimals: int = 3,
+) -> "GT":
+    """Create a Great Tables (gt) display table from a DataTree.
+
+    This builds on the long-form output of `flatten` and returns a nicely
+    printable table using the Python Great Tables package.
+
+    Args:
+            dtree: The DataTree to tabulate.
+            by: Split variable name(s) to pivot across columns. Use a string for a
+                    single split or an iterable of split labels. If empty, no pivoting
+                    is applied.
+            unnest: If True, the statisttics are represented in separate rows; if False,
+                    only the summary value is shown.
+            cascade: If True, include all tree nodes (splits, summaries, and analyses);
+                    otherwise only analysis rows are shown.
+            split_path: If True, split the path into separate hierarchical columns.
+            suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
+            pivot_statistics: If True, pivot statistics into columns instead of rows.
+                    Compatible with the `by` argument - when both are used, creates
+                    combined columns like "GroupName (statistic)".
+            title: Optional table title.
+            subtitle: Optional table subtitle.
+            decimals: Number of decimals for numeric formatting.
+
+    Returns:
+            A great_tables.GT object ready for display/printing.
+
+    Raises:
+            ImportError: If the great-tables package is not installed.
+    """
+
+    try:
+        from great_tables import GT
+    except Exception as e:
+        raise ImportError(
+            "great-tables is required for gt_table(). Install with `pip install great-tables`."
+        ) from e
+
+    # Choose the appropriate table function based on cascade parameter
+    table_func = cascade_table if cascade else simple_table
+    display_df = table_func(
+        dtree,
+        by=by,
+        split_path=split_path,
+        suppress_duplicates=suppress_duplicates,
+        pivot_statistics=pivot_statistics,
+    )
+
+    # Build the GT table
+    tbl = GT(display_df)
+
+    if title or subtitle:
+        tbl = tbl.tab_header(title=title, subtitle=subtitle)
+
+    remaining_level_cols = [c for c in display_df.columns if c.startswith("_Level_")]
+
+    # Format numeric columns
+    numeric_cols = []
+    for col in display_df.columns:
+        if col not in remaining_level_cols + ["Statistic", "Pivot"]:
+            # Check if column is numeric
+            if pd.api.types.is_numeric_dtype(display_df[col]):
+                numeric_cols.append(col)
+
+    if numeric_cols:
+        tbl = tbl.fmt_number(columns=numeric_cols, decimals=decimals)
+
+    # Add spanners for hierarchical levels if we have multiple levels
+    if len(remaining_level_cols) > 1:
+        try:
+            tbl = tbl.tab_spanner(label="Hierarchy", columns=remaining_level_cols) # TODO: find a better label than "Hierarchy" here. Maybe allow user to specify it as an argument?
+        except Exception:
+            pass
+
+    # Add spanners for pivot groups when using pivot_statistics with by
+    if pivot_statistics and by != "":
+        try:
+            # Identify columns with the pattern "GroupName||statistic"
+            pivot_cols = [col for col in display_df.columns if "||" in str(col)]
+
+            if pivot_cols:
+                # Extract unique group names and organize columns
+                group_dict = {}
+                col_rename = {}
+
+                for col in pivot_cols:
+                    # Split on the separator
+                    parts = col.split("||")
+                    if len(parts) == 2:
+                        group_name, stat_name = parts
+                        if group_name not in group_dict:
+                            group_dict[group_name] = []
+                        group_dict[group_name].append(col)
+                        # Rename column to just the statistic name
+                        col_rename[col] = stat_name
+
+                # Rename columns to remove group names
+                tbl = tbl.cols_label(**col_rename)
+
+                # Add a spanner for each group
+                for group_name, cols in group_dict.items():
+                    if len(cols) > 0:
+                        tbl = tbl.tab_spanner(label=group_name, columns=cols)
+        except Exception:
+            pass
+
+    # Style options
+    try:
+        tbl = tbl.opt_align_table_header(align="left")
+        tbl = tbl.tab_options(
+            table_font_size="12px",
+            heading_background_color="#f8f9fa",
+        )
+    except Exception:
+        pass
+
+    return tbl
