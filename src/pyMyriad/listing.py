@@ -371,303 +371,6 @@ def simple_table(
 # enregion
 
 
-def cascade_table(
-    dtree: DataTree,
-    by: str = "",
-    *,
-    include_label: bool = False,
-    split_path: bool = True,
-    suppress_duplicates: bool = True,
-    pivot_statistics: bool = False,
-) -> pd.DataFrame:
-    """Create a pandas DataFrame table from a DataTree including all tree nodes.
-
-    This function is similar to simple_table() but includes all tree nodes:
-    splits, summaries, and analyses. This provides a complete view of the
-    hierarchical analysis structure.
-
-    When `by` is specified, analysis rows are pivoted across columns while
-    non-analysis rows (splits, levels) are shown as single rows that indicate
-    the tree structure.
-
-    Args:
-            dtree: The DataTree to tabulate.
-            by: Split variable name(s) to pivot across columns.
-            include_label: If True, include an 'Analysis' column with the analysis label.
-            split_path: If True, split the path into separate hierarchical columns.
-            suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
-            pivot_statistics: If True, pivot statistics into columns instead of rows.
-
-    Returns:
-            A formatted pandas DataFrame with all tree nodes.
-
-    See Also:
-            simple_table: Similar function that shows only analysis results.
-    """
-    # When by is specified, we need special handling for non-analysis rows
-    if by != "":
-        return _create_cascade_table_with_pivot(
-            dtree,
-            by=by,
-            include_label=include_label,
-            split_path=split_path,
-            suppress_duplicates=suppress_duplicates,
-            pivot_statistics=pivot_statistics,
-        )
-
-    # Without pivoting, use the standard _create_table
-    return _create_table(
-        dtree,
-        by=by,
-        include_non_analysis=True,
-        include_label=include_label,
-        split_path=split_path,
-        suppress_duplicates=suppress_duplicates,
-        pivot_statistics=pivot_statistics,
-    )
-
-
-def _create_cascade_table_with_pivot(
-    dtree: DataTree,
-    by: str,
-    *,
-    include_label: bool = False,
-    split_path: bool = True,
-    suppress_duplicates: bool = True,
-    pivot_statistics: bool = False,
-) -> pd.DataFrame:
-    """Create a cascade table with proper handling of non-analysis rows during pivoting.
-
-    Non-analysis rows (splits, levels) are kept as single rows showing the hierarchy,
-    while analysis rows are pivoted across the specified variable.
-    """
-    # Get flattened data
-    df = flatten(dtree, unnest=True, by=by)
-
-    if len(df) == 0:
-        return pd.DataFrame({"Message": ["No results to display"]})
-
-    # Separate analysis and non-analysis rows
-    analysis_df = df[df["type"] == "analysis"].copy()
-    non_analysis_df = df[df["type"] != "analysis"].copy()
-
-    # Get pivot levels from analysis rows to determine column structure
-    pivot_levels = (
-        analysis_df["pivot_lvl"]
-        .apply(
-            lambda x: (
-                " > ".join([_clean_path_element(str(v)) for v in x if v is not None])
-                if isinstance(x, list)
-                else ""
-            )
-        )
-        .unique()
-        .tolist()
-    )
-    # Remove empty string if present
-    pivot_levels = [p for p in pivot_levels if p != ""]
-
-    # Process analysis rows with pivoting
-    if len(analysis_df) > 0:
-        analysis_result = _create_table(
-            dtree,
-            by=by,
-            include_non_analysis=False,
-            include_label=include_label,
-            split_path=split_path,
-            suppress_duplicates=False,  # We'll suppress later after merging
-            pivot_statistics=pivot_statistics,
-        )
-    else:
-        analysis_result = pd.DataFrame()
-
-    # Process non-analysis rows - filter to keep only meaningful hierarchy rows
-    if len(non_analysis_df) > 0:
-        # Keep only 'level' type rows that have meaningful path info
-        # Filter out 'root' and 'split' types as they don't add value in a pivoted view
-        non_analysis_df = non_analysis_df[non_analysis_df["type"] == "level"].copy()
-
-        if len(non_analysis_df) > 0:
-            # Select and process non-analysis data
-            non_analysis_df = non_analysis_df[
-                ["path_pivot", "depth", "type", "label"]
-            ].copy()
-
-            # Convert path_pivot to string for deduplication
-            non_analysis_df["path_pivot_str"] = non_analysis_df["path_pivot"].apply(
-                lambda x: (
-                    " > ".join(
-                        [_clean_path_element(str(v)) for v in x if v is not None]
-                    )
-                    if isinstance(x, list)
-                    else ""
-                )
-            )
-
-            # Filter out rows with empty or minimal path (like just 'root')
-            non_analysis_df = non_analysis_df[
-                non_analysis_df["path_pivot_str"].str.len() > 0
-            ]
-            non_analysis_df = non_analysis_df[
-                ~non_analysis_df["path_pivot_str"].isin(["", "root"])
-            ]
-
-            if len(non_analysis_df) > 0:
-                non_analysis_df = non_analysis_df.drop_duplicates(
-                    subset=["path_pivot_str", "depth", "type"]
-                )
-
-                # Convert path_pivot to list for _split_path_into_levels
-                non_analysis_df["path_pivot"] = non_analysis_df["path_pivot_str"].apply(
-                    lambda x: x.split(" > ") if isinstance(x, str) and x else []
-                )
-                non_analysis_df = non_analysis_df.drop(columns=["path_pivot_str"])
-
-                # Split path into level columns
-                if split_path:
-                    non_analysis_df, level_cols = _split_path_into_levels(
-                        non_analysis_df, path_col="path_pivot"
-                    )
-                else:
-                    level_cols = []
-
-                non_analysis_df = non_analysis_df.drop(columns=["path_pivot"])
-
-                # Add placeholder columns for pivot values and statistics
-                if pivot_statistics and pivot_levels:
-                    # When pivoting both by variable and statistics, we need combined columns
-                    stat_names = (
-                        analysis_df["statistics"].dropna().unique().tolist()
-                        if len(analysis_df) > 0
-                        else []
-                    )
-                    for plvl in pivot_levels:
-                        for stat in stat_names:
-                            col_name = f"{plvl}||{stat}"
-                            if col_name not in non_analysis_df.columns:
-                                non_analysis_df[col_name] = None
-                    # No Statistic column needed when pivot_statistics is True
-                    non_analysis_df["Statistic"] = None
-                elif pivot_levels:
-                    # Just pivoting by variable
-                    for plvl in pivot_levels:
-                        if plvl not in non_analysis_df.columns:
-                            non_analysis_df[plvl] = None
-                    # Add Statistic column with hierarchy indicator
-                    non_analysis_df["Statistic"] = "[level]"
-
-                # Add label column placeholder if needed
-                if include_label:
-                    non_analysis_df["Analysis"] = non_analysis_df["label"]
-
-                non_analysis_df = non_analysis_df.drop(
-                    columns=["type", "label"], errors="ignore"
-                )
-            else:
-                non_analysis_df = pd.DataFrame()
-        else:
-            non_analysis_df = pd.DataFrame()
-    else:
-        non_analysis_df = pd.DataFrame()
-
-    # Merge analysis and non-analysis results
-    if len(analysis_result) > 0 and len(non_analysis_df) > 0:
-        # Get the column order from analysis result
-        result_cols = list(analysis_result.columns)
-
-        # Align non-analysis columns to match
-        for col in result_cols:
-            if col not in non_analysis_df.columns:
-                non_analysis_df[col] = None
-
-        # Keep only matching columns in correct order
-        non_analysis_df = non_analysis_df[
-            [c for c in result_cols if c in non_analysis_df.columns]
-        ]
-
-        # Add any missing columns
-        for col in result_cols:
-            if col not in non_analysis_df.columns:
-                non_analysis_df[col] = None
-        non_analysis_df = non_analysis_df[result_cols]
-
-        # Combine and sort by depth to maintain hierarchy order
-        # Add depth for sorting if not present
-        if "depth" not in analysis_result.columns:
-            # Estimate depth from level columns
-            level_cols = [c for c in analysis_result.columns if c.startswith("_Level_")]
-            if level_cols:
-                analysis_result["_sort_depth"] = (
-                    analysis_result[level_cols].notna().sum(axis=1)
-                )
-            else:
-                analysis_result["_sort_depth"] = 0
-        else:
-            analysis_result["_sort_depth"] = analysis_result["depth"]
-
-        if "depth" in non_analysis_df.columns:
-            non_analysis_df["_sort_depth"] = non_analysis_df["depth"]
-        else:
-            level_cols = [c for c in non_analysis_df.columns if c.startswith("_Level_")]
-            if level_cols:
-                non_analysis_df["_sort_depth"] = (
-                    non_analysis_df[level_cols].notna().sum(axis=1)
-                )
-            else:
-                non_analysis_df["_sort_depth"] = 0
-
-        # Create a path string for proper sorting
-        level_cols = [c for c in result_cols if c.startswith("_Level_")]
-
-        def create_sort_key(row):
-            parts = []
-            for col in level_cols:
-                val = row.get(col, "")
-                if pd.isna(val) or val == "" or val == "--":
-                    break
-                parts.append(str(val))
-            return " > ".join(parts)
-
-        analysis_result["_sort_path"] = analysis_result.apply(create_sort_key, axis=1)
-        non_analysis_df["_sort_path"] = non_analysis_df.apply(create_sort_key, axis=1)
-
-        # Mark row types for ordering (non-analysis first at each level)
-        analysis_result["_row_type"] = 1  # Analysis rows come after
-        non_analysis_df["_row_type"] = 0  # Non-analysis rows come first
-
-        # Combine
-        combined = pd.concat([analysis_result, non_analysis_df], ignore_index=True)
-
-        # Sort by path then type (non-analysis first at each path)
-        combined = combined.sort_values(
-            ["_sort_path", "_sort_depth", "_row_type"]
-        ).reset_index(drop=True)
-
-        # Drop sorting columns
-        combined = combined.drop(
-            columns=["_sort_depth", "_sort_path", "_row_type", "depth"], errors="ignore"
-        )
-
-        display_df = combined
-    elif len(analysis_result) > 0:
-        display_df = analysis_result
-    else:
-        display_df = non_analysis_df
-
-    # Final cleanup
-    remaining_level_cols = [c for c in display_df.columns if c.startswith("_Level_")]
-
-    # Suppress duplicate values in hierarchy columns
-    if suppress_duplicates and remaining_level_cols:
-        display_df = _suppress_duplicate_values(display_df, remaining_level_cols)
-
-    # Replace None in level columns with "--"
-    for col in remaining_level_cols:
-        display_df[col] = display_df[col].replace({None: "--"})
-
-    return display_df
-
-
 def gt_table(
     dtree: DataTree,
     by: str = "",
@@ -801,7 +504,7 @@ def gt_table(
 def _create_cascade_table(
     dtree: DataTree,
     by: str = "",
-    *,    split_path: bool = True,
+    *,    
     pivot_statistics: bool = False,
 ) -> pd.DataFrame:
     """Internal function to create a pandas DataFrame table from a DataTree.
@@ -809,9 +512,6 @@ def _create_cascade_table(
     Args:
             dtree: The DataTree to tabulate.
             by: Split variable name(s) to pivot across columns.
-            include_non_analysis: If True, keep split/level rows.
-            include_label: If True, include an 'Analysis' column with the analysis label.
-            split_path: If True, split the path into separate hierarchical columns.
             pivot_statistics: If True, pivot statistics into columns instead of rows.
 
     Returns:
@@ -824,12 +524,9 @@ def _create_cascade_table(
     if by == "" and not pivot_statistics:
         # df is already in the correct format. Just some cleanup and column selection. (to create column _level_0, _level_1, etc. from path_pivot if split_path is True)
         df = df[["path_pivot", "label", "statistics", "values"]].copy()
-        # Expand path_pivot to seveal columns if split_path is True
-        if split_path:
-            df, pivot_level_cols = _split_path_into_levels(df, path_col="path_pivot")
-    
+
 	# Case 2: by != "" and pivot_statistics = False: Pivot by split variable, but keep non-analysis rows as single rows
-	elif by != "" and not pivot_statistics:
+    elif by != "" and not pivot_statistics:
         df = df[["path_pivot", "pivot_split", "pivot_lvl", "label", "statistics", "values"]].copy()
         
         # Join the elements of path_pivot into a single string for pivoting
@@ -853,10 +550,7 @@ def _create_cascade_table(
 		# select unique path_pivot values to keep non analysis values and merge back the analysis values.
         df = df[["path_pivot", "label", "statistics"]].drop_duplicates(subset=["path_pivot", "label", "statistics"]).copy()
         df = df.merge(df_pivot, on=["path_pivot", "label", "statistics"], how="left", suffixes=("", "_pivot"))
-        
-        if split_path:
-            df, pivot_level_cols = _split_path_into_levels(df, path_col="path_pivot")
-    
+
 	# Case 3: by = "" and pivot_statistics = True: Pivot by statistics only.
     elif by == "" and pivot_statistics:
         df = df[["path_pivot", "label", "statistics", "values"]].copy()
@@ -867,9 +561,9 @@ def _create_cascade_table(
 		)
 	
 		# Join the elements of path_pivot into a single string for pivoting
-		df["path_pivot"] = _merge_path_into_string(df, path_col="path_pivot")["path_pivot"]
+        df["path_pivot"] = _merge_path_into_string(df, path_col="path_pivot")["path_pivot"]
 
-		df_pivot = df.pivot_table(
+        df_pivot = df.pivot_table(
 			index=["path_pivot", "label"],
 			columns="statistics",
 			values="values",
@@ -878,32 +572,28 @@ def _create_cascade_table(
 		).reset_index()
         
 		# select unique path_pivot values to keep non analysis values and merge back the analysis values.
-        df = df[["path_pivot"]].drop_duplicates(subset=["path_pivot"]).copy()
+        df = df[["path_pivot"]].drop_duplicates().copy()
         df = df.merge(df_pivot, on=["path_pivot"], how="left", suffixes=("", "_pivot"))	
-
-		if split_path:
-			df, pivot_level_cols = _split_path_into_levels(df, path_col="path_pivot") # TODO: check the cleanup of the path_pivot column
-        
     
 	# Case 4: by != "" and pivot_statistics = True: Pivot by both split variable and statistics, creating combined columns like "GroupName || statistic".
     elif by != "" and pivot_statistics:
         
 		# double pibot of pivot_lvl and statistics to get combined columns like "GroupName || statistic"
-		df = df[["path_pivot", "pivot_split", "pivot_lvl", "label", "statistics", "values"]].copy()
+        df = df[["path_pivot", "pivot_split", "pivot_lvl", "label", "statistics", "values"]].copy()
 
 		# Ticky bit: Remove the "analysis" string from pivot_lvl if it is the last element to have the stats on the same row as the split level row.
-		df["path_pivot"] = df["path_pivot"].apply(
+        df["path_pivot"] = df["path_pivot"].apply(
 			lambda x: x[:-1] if isinstance(x, list) and len(x) > 0 and x[-1] == "analysis" else x
 		)
 
 		# Join the elements of path_pivot into a single string for pivoting
-		df["path_pivot"] = _merge_path_into_string(df, path_col="path_pivot")["path_pivot"]
+        df["path_pivot"] = _merge_path_into_string(df, path_col="path_pivot")["path_pivot"]
 		# Join the elements of pivot_split into a single string for pivoting
-		df["pivot_split"] = _merge_path_into_string(df, path_col="pivot_split")["pivot_split"]
+        df["pivot_split"] = _merge_path_into_string(df, path_col="pivot_split")["pivot_split"]
 		# Conver pivot_lvl to string for pivoting
-		df["pivot_lvl"] = _merge_path_into_string(df, path_col="pivot_lvl")["pivot_lvl"]
+        df["pivot_lvl"] = _merge_path_into_string(df, path_col="pivot_lvl")["pivot_lvl"]
 
-		df_pivot = df.pivot_table(
+        df_pivot = df.pivot_table(
 			index=["path_pivot", "label"],
 			columns=["pivot_lvl", "statistics"],
 			values="values",
@@ -912,171 +602,85 @@ def _create_cascade_table(
 		).reset_index()
 
 		# select unique path_pivot values to keep non analysis values and merge back the analysis values.
-		df = df[["path_pivot"]].drop_duplicates(subset=["path_pivot"]).copy()
+        df = df[["path_pivot"]].drop_duplicates(subset=["path_pivot"]).copy()
 
 		# Enable merge of multiindex columns by flattening the pivoted columns to "pivot_lvl||statistics" format
-		df_pivot.columns = [
+        df_pivot.columns = [
 			f"{col[0]}||{col[1]}" if isinstance(col, tuple) and col[1] != "" else col[0]
 			for col in df_pivot.columns
 		]
 
-		df = df.merge(df_pivot, on=["path_pivot"], how="left", suffixes=("", "_pivot"))
+        df = df.merge(df_pivot, on=["path_pivot"], how="left", suffixes=("", "_pivot"))
+
+    return df
 
 
 
+def cascade_table(
+    dtree: DataTree,
+    by: str = "",
+    *,
+    include_label: bool = False,
+    split_path: bool = True,
+    suppress_duplicates: bool = True,
+    pivot_statistics: bool = False,
+) -> tuple[pd.DataFrame, list]:
+    """Create a pandas DataFrame table from a DataTree including all tree nodes.
 
+    This function is similar to simple_table() but includes all tree nodes:
+    splits, summaries, and analyses. This provides a complete view of the
+    hierarchical analysis structure.
 
+    When `by` is specified, analysis rows are pivoted across columns while
+    non-analysis rows (splits, levels) are shown as single rows that indicate
+    the tree structure.
 
+    Args:
+            dtree: The DataTree to tabulate.
+            by: Split variable name(s) to pivot across columns.
+            include_label: If True, include an 'Analysis' column with the analysis label.
+            split_path: If True, split the path into separate hierarchical columns.
+            suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
+            pivot_statistics: If True, pivot statistics into columns instead of rows.
 
+    Returns:
+            A tuple of (DataFrame and list of pivot level column names).
+    See Also:
+            simple_table: Similar function that shows only analysis results.
+    """
+    
+    table_proc = _create_cascade_table(
+        dtree,
+        by=by,
+        pivot_statistics=pivot_statistics
+	)
 
-
-
-
-
-
-
-
-    if len(df) == 0:
-        return pd.DataFrame({"Message": ["No analysis results to display"]})
-
-    # Select columns
-    df = df[
-        [
-            "path_pivot",
-            "pivot_split",
-            "pivot_lvl",
-            "statistics",
-            "values",
-            "label",
-            "depth",
-        ]
-    ].copy()
-
-    # join all elements of path_pivot into a single string for display
-    df["path_pivot"] = df["path_pivot"].apply(
-        lambda x: (
-            " > ".join([_clean_path_element(str(v)) for v in x if v is not None])
-            if isinstance(x, list)
-            else ""
-        )
-    )
-    df["pivot_lvl"] = df["pivot_lvl"].apply(
-        lambda x: (
-            " > ".join([_clean_path_element(str(v)) for v in x if v is not None])
-            if isinstance(x, list)
-            else ""
-        )
-    )
-
-    # Handle pivot columns if present
-    pivot_columns = []
-
-    if by != "" and pivot_statistics:
-        # Pivot by both split variable and statistics
-        # Use MultiIndex pivot to create hierarchical columns
-        df = df.pivot_table(
-            index=["depth", "path_pivot", "label"],
-            columns=["pivot_lvl", "statistics"],
-            values="values",
-            aggfunc="first",
-            dropna=False,  # Keep all combinations of pivot levels and statistics
-        ).reset_index()
-
-        # Flatten the MultiIndex columns
-        # After reset_index, ALL columns become tuples: ('name', '') for index cols, ('group', 'stat') for data cols
-        new_cols = []
-        for col in df.columns:
-            if isinstance(col, tuple):
-                if col[1] == "":
-                    # This is an index column: ('depth', ''), ('path_pivot', ''), etc.
-                    new_cols.append(col[0])
-                else:
-                    # This is a data column: ('F', 'm'), ('M', 'n'), etc.
-                    new_cols.append(f"{col[0]}||{col[1]}")  # Use || as separator
-            else:
-                # Fallback for non-tuple columns (shouldn't happen with MultiIndex)
-                new_cols.append(col)
-        df.columns = new_cols
-
-        # Get the pivot columns for later use
-        pivot_columns = [col for col in df.columns if "||" in str(col)]
-
-    elif by != "":
-        # Pivot only by split variable
-        pivot_columns = df["pivot_lvl"].unique().tolist()
-        df = df.pivot_table(
-            index=["depth", "path_pivot", "label", "statistics"],
-            columns="pivot_lvl",
-            values="values",
-            aggfunc="first",
-            dropna=False,  # Keep all combinations of pivot levels and statistics
-        ).reset_index()
-
-    elif pivot_statistics:
-        # Pivot only by statistics
-        # Filter out None values (from non-analysis rows like splits/levels)
-        pivot_columns = [s for s in df["statistics"].unique().tolist() if s is not None]
-        df = df.pivot_table(
-            index=["depth", "path_pivot", "label"],
-            columns="statistics",
-            values="values",
-            aggfunc="first",
-            dropna=False,  # Keep all combinations of pivot levels and statistics
-        ).reset_index()
-    else:
-        # No pivoting
-        pivot_columns = ["values"]
-
-    # Revert joining of path_pivot back to list
-    df["path_pivot"] = df["path_pivot"].apply(
-        lambda x: x.split(" > ") if isinstance(x, str) else []
-    )
-
-    # Split path into level columns if requested
+	# remove label column if asked
+    if not include_label:
+        table_proc = table_proc.drop(columns=["label"])
+    
+	# split path into columns if asked
     if split_path:
-        df, pivot_level_cols = _split_path_into_levels(df, path_col="path_pivot")
+        # turn the string path_pivot back to list for _split_path_into_levels
+        table_proc["path_pivot"] = table_proc["path_pivot"].apply(
+			lambda x: x.split(" > ") if isinstance(x, str) else x # already a list in some cases.
+		)
+
+        table_proc, pivot_level_cols = _split_path_into_levels(table_proc, path_col="path_pivot")
+        
+        # reorder columns to have levels first
+        level_cols = [c for c in pivot_level_cols if c in table_proc.columns]
+        other_cols = [c for c in table_proc.columns if c not in level_cols]
+        table_proc = table_proc[level_cols + other_cols]
+        
+		# remove path_pivot column if it still exists
+        if "path_pivot" in table_proc.columns:
+            table_proc = table_proc.drop(columns=["path_pivot"])
     else:
         pivot_level_cols = []
-
-    df = df.drop(columns=["path_pivot"])
-    # reorder columns to have levels first
-    if pivot_statistics and by == "":
-        # When only pivoting statistics, don't include 'statistics' column
-        display_cols = list(pivot_level_cols) + pivot_columns
-    elif pivot_statistics and by != "":
-        # When pivoting both, don't include 'statistics' column
-        display_cols = list(pivot_level_cols) + pivot_columns
-    else:
-        display_cols = list(pivot_level_cols) + ["statistics"] + pivot_columns
-
-    # Include label column if requested
-    if include_label and "label" in df.columns:
-        # Insert label after level columns
-        label_pos = len([c for c in display_cols if c.startswith("_Level_")])
-        display_cols.insert(label_pos, "label")
-
-    display_df = df[display_cols].copy()
-
-    # Rename columns
-    rename_map = {"values": "Value"}
-    if not pivot_statistics or by != "":
-        rename_map["statistics"] = "Statistic"
-    if include_label:
-        rename_map["label"] = "Analysis"
-    display_df = display_df.rename(columns=rename_map)
-
-    # Remove rows where all level columns are None
-    remaining_level_cols = [c for c in display_df.columns if c.startswith("_Level_")]
-    # if remaining_level_cols:
-    # 	display_df = display_df.dropna(subset=remaining_level_cols, how='all')
-
-    # Suppress duplicate values in hierarchy columns for cleaner display
-    if suppress_duplicates and remaining_level_cols:
-        display_df = _suppress_duplicate_values(display_df, remaining_level_cols)
-
-        # Final cleanup of display DataFrame
-    # Replace None in level columns with "--" for better visibility
-    for col in remaining_level_cols:
-        display_df[col] = display_df[col].replace({None: "--"})
-
-    return display_df
+        
+	# remove duplicate in pivot level columns for cleaner display if asked
+    if suppress_duplicates and pivot_level_cols:
+        table_proc = _suppress_duplicate_values(table_proc, pivot_level_cols)
+        
+    return table_proc, pivot_level_cols
