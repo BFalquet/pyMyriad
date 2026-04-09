@@ -523,7 +523,7 @@ def _create_cascade_table(
     # Case 1: by = "" and pivot_statistics = False: Just show all rows in long format, no pivoting
     if by == "" and not pivot_statistics:
         # df is already in the correct format. Just some cleanup and column selection. (to create column _level_0, _level_1, etc. from path_pivot if split_path is True)
-        df = df[["path_pivot", "label", "statistics", "values"]].copy()
+        df = df[["path_pivot", "pivot_lvl", "label", "statistics", "values"]].copy()
 
 	# Case 2: by != "" and pivot_statistics = False: Pivot by split variable, but keep non-analysis rows as single rows
     elif by != "" and not pivot_statistics:
@@ -537,7 +537,6 @@ def _create_cascade_table(
         
 		# Conver pivot_lvl to string for pivoting
         df["pivot_lvl"] = _merge_path_into_string(df, path_col="pivot_lvl")["pivot_lvl"]
-
 
         df_pivot = df.pivot_table(
 			index=["path_pivot", "label", "statistics"],
@@ -553,7 +552,7 @@ def _create_cascade_table(
 
 	# Case 3: by = "" and pivot_statistics = True: Pivot by statistics only.
     elif by == "" and pivot_statistics:
-        df = df[["path_pivot", "label", "statistics", "values"]].copy()
+        df = df[["path_pivot", "pivot_lvl", "label", "statistics", "values"]].copy()
         
 		# Ticky bit: Remove the "analysis" string from pivot_lvl if it is the last element to have the stats on the same row as the split level row.
         df["path_pivot"] = df["path_pivot"].apply(
@@ -562,9 +561,10 @@ def _create_cascade_table(
 	
 		# Join the elements of path_pivot into a single string for pivoting
         df["path_pivot"] = _merge_path_into_string(df, path_col="path_pivot")["path_pivot"]
+        df["pivot_lvl"] = _merge_path_into_string(df, path_col="pivot_lvl")["pivot_lvl"]
 
         df_pivot = df.pivot_table(
-			index=["path_pivot", "label"],
+			index=["path_pivot", "pivot_lvl", "label"],
 			columns="statistics",
 			values="values",
 			aggfunc="first",
@@ -615,7 +615,6 @@ def _create_cascade_table(
     return df
 
 
-
 def cascade_table(
     dtree: DataTree,
     by: str = "",
@@ -624,7 +623,7 @@ def cascade_table(
     split_path: bool = True,
     suppress_duplicates: bool = True,
     pivot_statistics: bool = False,
-) -> tuple[pd.DataFrame, list]:
+) -> pd.DataFrame:
     """Create a pandas DataFrame table from a DataTree including all tree nodes.
 
     This function is similar to simple_table() but includes all tree nodes:
@@ -644,7 +643,7 @@ def cascade_table(
             pivot_statistics: If True, pivot statistics into columns instead of rows.
 
     Returns:
-            A tuple of (DataFrame and list of pivot level column names).
+            A pandas DataFrame table.
     See Also:
             simple_table: Similar function that shows only analysis results.
     """
@@ -683,4 +682,4 @@ def cascade_table(
     if suppress_duplicates and pivot_level_cols:
         table_proc = _suppress_duplicate_values(table_proc, pivot_level_cols)
         
-    return table_proc, pivot_level_cols
+    return table_proc
