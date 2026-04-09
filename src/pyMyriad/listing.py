@@ -801,11 +801,7 @@ def gt_table(
 def _create_cascade_table(
     dtree: DataTree,
     by: str = "",
-    *,
-    # include_non_analysis: bool = True,
-    include_label: bool = False,
-    split_path: bool = True,
-    suppress_duplicates: bool = True,
+    *,    split_path: bool = True,
     pivot_statistics: bool = False,
 ) -> pd.DataFrame:
     """Internal function to create a pandas DataFrame table from a DataTree.
@@ -816,7 +812,6 @@ def _create_cascade_table(
             include_non_analysis: If True, keep split/level rows.
             include_label: If True, include an 'Analysis' column with the analysis label.
             split_path: If True, split the path into separate hierarchical columns.
-            suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
             pivot_statistics: If True, pivot statistics into columns instead of rows.
 
     Returns:
@@ -865,6 +860,12 @@ def _create_cascade_table(
 	# Case 3: by = "" and pivot_statistics = True: Pivot by statistics only.
     elif by == "" and pivot_statistics:
         df = df[["path_pivot", "label", "statistics", "values"]].copy()
+        
+		# Ticky bit: Remove the "analysis" string from pivot_lvl if it is the last element to have the stats on the same row as the split level row.
+        df["path_pivot"] = df["path_pivot"].apply(
+			lambda x: x[:-1] if isinstance(x, list) and len(x) > 0 and x[-1] == "analysis" else x
+		)
+	
 		# Join the elements of path_pivot into a single string for pivoting
 		df["path_pivot"] = _merge_path_into_string(df, path_col="path_pivot")["path_pivot"]
 
@@ -877,16 +878,62 @@ def _create_cascade_table(
 		).reset_index()
         
 		# select unique path_pivot values to keep non analysis values and merge back the analysis values.
-        df = df[["path_pivot", "label"]].drop_duplicates(subset=["path_pivot", "label"]).copy()
-        df = df.merge(df_pivot, on=["path_pivot", "label"], how="left", suffixes=("", "_pivot"))	
+        df = df[["path_pivot"]].drop_duplicates(subset=["path_pivot"]).copy()
+        df = df.merge(df_pivot, on=["path_pivot"], how="left", suffixes=("", "_pivot"))	
 
 		if split_path:
-			df, pivot_level_cols = _split_path_into_levels(df, path_col="path_pivot")
+			df, pivot_level_cols = _split_path_into_levels(df, path_col="path_pivot") # TODO: check the cleanup of the path_pivot column
         
-    # TODO
+    
 	# Case 4: by != "" and pivot_statistics = True: Pivot by both split variable and statistics, creating combined columns like "GroupName || statistic".
     elif by != "" and pivot_statistics:
-	
+        
+		# double pibot of pivot_lvl and statistics to get combined columns like "GroupName || statistic"
+		df = df[["path_pivot", "pivot_split", "pivot_lvl", "label", "statistics", "values"]].copy()
+
+		# Ticky bit: Remove the "analysis" string from pivot_lvl if it is the last element to have the stats on the same row as the split level row.
+		df["path_pivot"] = df["path_pivot"].apply(
+			lambda x: x[:-1] if isinstance(x, list) and len(x) > 0 and x[-1] == "analysis" else x
+		)
+
+		# Join the elements of path_pivot into a single string for pivoting
+		df["path_pivot"] = _merge_path_into_string(df, path_col="path_pivot")["path_pivot"]
+		# Join the elements of pivot_split into a single string for pivoting
+		df["pivot_split"] = _merge_path_into_string(df, path_col="pivot_split")["pivot_split"]
+		# Conver pivot_lvl to string for pivoting
+		df["pivot_lvl"] = _merge_path_into_string(df, path_col="pivot_lvl")["pivot_lvl"]
+
+		df_pivot = df.pivot_table(
+			index=["path_pivot", "label"],
+			columns=["pivot_lvl", "statistics"],
+			values="values",
+			aggfunc="first",
+			dropna=True,  # this will drop non-analysis rows. We will merge them back later to keep them in the final table.
+		).reset_index()
+
+		# select unique path_pivot values to keep non analysis values and merge back the analysis values.
+		df = df[["path_pivot"]].drop_duplicates(subset=["path_pivot"]).copy()
+
+		# Enable merge of multiindex columns by flattening the pivoted columns to "pivot_lvl||statistics" format
+		df_pivot.columns = [
+			f"{col[0]}||{col[1]}" if isinstance(col, tuple) and col[1] != "" else col[0]
+			for col in df_pivot.columns
+		]
+
+		df = df.merge(df_pivot, on=["path_pivot"], how="left", suffixes=("", "_pivot"))
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     if len(df) == 0:
