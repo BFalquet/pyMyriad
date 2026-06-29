@@ -182,7 +182,7 @@ def test_denom_list_of_columns():
 
 
 def test_drop_empty_false_keeps_empty_groups():
-    """drop_empty=False (default) keeps kwexpr levels with zero rows.
+    """drop_empty=False keeps kwexpr levels with zero rows.
 
     For expr-based splits, groupby only returns groups that exist in the data,
     so empty groups can only arise from kwexpr-style splits where conditions are
@@ -246,17 +246,37 @@ def test_drop_empty_true_with_kwexpr():
     assert "high" not in split
 
 
-def test_categorical_dtype_observed_only():
-    """Split on pd.Categorical column produces only observed groups (no ghost groups)."""
+def test_categorical_dtype_drop_empty_false_keeps_empty_levels():
+    """Split on pd.Categorical column with drop_empty=False keeps all category
+    levels, including ones with zero observations."""
     df = pd.DataFrame(
         {
             "Gender": pd.Categorical(["M", "M", "M"], categories=["M", "F"]),
             "Income": [50000, 60000, 70000],
         }
     )
+    tree = AnalysisTree().split_by("df.Gender", drop_empty=False).analyze_by(n=lambda df: len(df))
+    result = tree.run(df)
+    split = result["df.Gender"]
+    assert "M" in split
+    # "F" has no observations but is a known category; drop_empty=False retains it
+    assert "F" in split
+    assert len(split["F"]["0"].data) == 0
+
+
+def test_categorical_dtype_drop_empty_true_drops_empty_levels():
+    """Split on pd.Categorical column with drop_empty=True (default) removes category levels
+    that have zero observations."""
+    df = pd.DataFrame(
+        {
+            "Gender": pd.Categorical(["M", "M", "M"], categories=["M", "F"]),
+            "Income": [50000, 60000, 70000],
+        }
+    )
+    # drop_empty=True is the default, so no explicit argument needed
     tree = AnalysisTree().split_by("df.Gender").analyze_by(n=lambda df: len(df))
     result = tree.run(df)
     split = result["df.Gender"]
     assert "M" in split
-    # "F" has no rows in this data; observed=True means it should not appear
+    # "F" has no observations and drop_empty=True (default) removes it
     assert "F" not in split

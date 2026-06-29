@@ -454,7 +454,7 @@ def plot_distribution(data, type: str = "scatter", x: str = None, **kwargs):
 
     elif type == "boxplot":
         # Align boxplots with their corresponding numeric y values using matplotlib
-        grouped_data = merge_data.groupby(y)
+        grouped_data = merge_data.groupby(y, observed=True)
         box_data = [group["summary"].values for name, group in grouped_data]
         unique_y = [float(x) for x in grouped_data.groups.keys()]
         plt.boxplot(
@@ -468,7 +468,7 @@ def plot_distribution(data, type: str = "scatter", x: str = None, **kwargs):
 
     elif type == "violin":
         # Align violin plots with their corresponding numeric y values using matplotlib
-        grouped_data = merge_data.groupby(y)
+        grouped_data = merge_data.groupby(y, observed=True)
         violin_data = [group["summary"].values.tolist() for name, group in grouped_data]
         unique_y = [float(x) for x in grouped_data.groups.keys()]
         plt.violinplot(

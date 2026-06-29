@@ -67,7 +67,7 @@ AnalysisTree.run(df)  →  DataTree
 - [`analysis_tree.py`](src/pyMyriad/analysis_tree.py) - Tree construction (AnalysisTree, SplitNode, AnalysisNode)
 - [`data_tree.py`](src/pyMyriad/data_tree.py) - Result structures (DataTree, SplitDataNode, DataNode)
 - [`utils.py`](src/pyMyriad/utils.py) - Expression evaluation (scope_eval, scope_cross_eval)
-- [`listing.py`](src/pyMyriad/listing.py) - Table generation (simple_table, gt_table)
+- [`listing.py`](src/pyMyriad/listing.py) - Table generation (simple_table, cascade_table, gt_table)
 - [`plots.py`](src/pyMyriad/plots.py) - Visualization (forest_plot, distribution_plot)
 - [`tabular.py`](src/pyMyriad/tabular.py) - Data flattening and formatting
 
