@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New private helpers `_node_to_dict()` and `_dict_to_node()` in `analysis_tree.py` for recursive node serialization/deserialization
   - New guide **docs/guides/interoperability.rst** documenting the JSON schema, lambda handling, and an end-to-end agent workflow example
 - `drop_empty` parameter on `split_by()`, `split_at_by()`, and `split_at_root_by()` (and on `SplitNode` directly) to optionally discard split levels that produce an empty DataFrame. Defaults to `False` (backward-compatible). Useful when conditional splits may not be satisfied by every subset of the data.
-- Categorical column support: `SplitNode.run()` now passes `observed=True` to `pandas.groupby`, so splitting on a `pd.Categorical` column only returns groups that actually appear in the data (no phantom empty groups for absent categories). This also silences the pandas ≥ 2.2 `FutureWarning` about the `observed` default changing.
+- Categorical column support: `SplitNode.run()` now ties `observed=<drop_empty>` in `pandas.groupby` to the `drop_empty` parameter, so categorical split behavior is consistent with all other splits. With `drop_empty=False` (default) all category levels—including those with zero observations—are retained as empty DataFrames. With `drop_empty=True` only observed (non-empty) category levels are returned. Passing an explicit value for `observed` also silences the pandas ≥ 2.2 `FutureWarning` about the `observed` default changing. Both `groupby` calls in `plots.py` were updated to `observed=True` for the same reason.
 
 ## [0.1.0] - 2026-03-22
 
@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-analysis functionality for comparing multiple analysis results
 - Hierarchical column display in listing tables - path now split into separate `Level_0`, `Level_1`, etc. columns for easier filtering and sorting
 - New `simple_table()` function for lightweight DataFrame output without requiring the great-tables dependency
+- New `cascade_table()` function for a hierarchical DataFrame view that includes all tree nodes (splits, summaries, and analyses), not just terminal analysis rows
 - New `pivot_statistics` parameter to display statistics as columns instead of rows
 - Path element cleaning - automatically removes `df.` prefixes, `root` and `analysis` markers for cleaner display
 - Duplicate value suppression in hierarchy columns (controlled via `suppress_duplicates` parameter)

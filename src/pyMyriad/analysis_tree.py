@@ -317,15 +317,17 @@ class AnalysisTree(list):
         return cls.from_dict(json.loads(source))
 
     def split_by(
-        self, expr: str = None, label: str = None, drop_empty: bool = False, **kwargs
+        self, expr: str = None, label: str = None, drop_empty: bool = True, **kwargs
     ):
         """Add a split node at the extremites of the branches.
         Note:
             No split node is added where there is already a split node or an analysis node with termination signal.
         Args:
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
-            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded.
-                Defaults to False.
+            drop_empty (bool, optional): If True (default), split levels that produce an empty DataFrame are
+                discarded. For expression-based splits on ``pd.Categorical`` columns, ``True`` only produces
+                levels that have at least one observation while ``False`` retains all category levels
+                (including those with zero observations).
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Returns:
             AnalysisTree: The modified AnalysisTree with the new split node added.
@@ -333,7 +335,8 @@ class AnalysisTree(list):
             >>> a_tree = AnalysisTree()
             >>> a_tree = a_tree.split_by(m = "df.A > 50")
             >>> a_tree = a_tree.split_by("df.B > 50")
-            >>> a_tree = a_tree.split_by("df.Gender", drop_empty=True)
+            >>> a_tree = a_tree.split_by("df.Gender")                    # drops empty category levels (default)
+            >>> a_tree = a_tree.split_by("df.Gender", drop_empty=False)  # keeps empty category levels
         """
 
         is_split_node = [isinstance(x, SplitNode) for x in self]
@@ -361,7 +364,7 @@ class AnalysisTree(list):
         path: list,
         expr: str = None,
         label: str = None,
-        drop_empty: bool = False,
+        drop_empty: bool = True,
         **kwargs,
     ):
         """Add a split node at a specific path in the tree.
@@ -370,8 +373,8 @@ class AnalysisTree(list):
             path (list): A list representing the path where the split node should be added.
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
             label (str, optional): The label of the node.
-            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded.
-                Defaults to False.
+            drop_empty (bool, optional): If True (default), split levels that produce an empty DataFrame are
+                discarded. Set to False to retain levels with zero observations.
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Returns:
             AnalysisTree: The modified AnalysisTree with the new split node added at the specified path.
@@ -628,7 +631,7 @@ class SplitNode(list):
         *args,
         expr: str = None,
         label: str = None,
-        drop_empty: bool = False,
+        drop_empty: bool = True,
         **kwargs,
     ) -> None:
         """
@@ -637,8 +640,11 @@ class SplitNode(list):
             *args: Additional positional arguments.
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
             label (str, optional): The label of the node.
-            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded
-                from the result. Defaults to False (all levels are kept, even empty ones).
+            drop_empty (bool, optional): If True (default), split levels that produce an empty DataFrame are
+                discarded from the result. For expression-based splits on ``pd.Categorical`` columns this also
+                controls which category levels are enumerated: ``True`` only produces levels that have at least
+                one observation while ``False`` retains all category levels (including those with zero
+                observations).
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Raises:
             AssertionError: If neither `expr` nor `kwargs` are provided, or if both are provided.
@@ -647,7 +653,7 @@ class SplitNode(list):
         Examples:
             >>> SplitNode("age > 50")
             >>> SplitNode(Y = "age > 50", N = "age <= 50")
-            >>> SplitNode("df.Age > 50", drop_empty=True)  # discard empty groups
+            >>> SplitNode("df.Age > 50", drop_empty=False)  # keep empty groups
         """
 
         super().__init__(args)
@@ -727,7 +733,12 @@ class SplitNode(list):
             )
             gp_bool = gp_eval_dict["gp"]
 
-            groups = data.groupby(gp_bool, observed=True)
+            # observed=self.drop_empty: when drop_empty=True, only observed
+            # categories are yielded (no empty groups generated); when
+            # drop_empty=False, all category levels—including unobserved
+            # ones—are returned as empty DataFrames so they are preserved.
+            # For non-categorical columns observed has no effect.
+            groups = data.groupby(gp_bool, observed=self.drop_empty)
 
             # Convert to dictionary of DataFrames
             split_dfs = {str(name): group for name, group in groups}
@@ -847,7 +858,7 @@ class SplitNode(list):
         return SplitDataNode(split_var=split_var, label=self.label, **res_dic)
 
     def split_by(
-        self, expr: str = None, label: str = None, drop_empty: bool = False, **kwargs
+        self, expr: str = None, label: str = None, drop_empty: bool = True, **kwargs
     ):
         """Add a split node at the extremites of the branches.
 
@@ -856,8 +867,8 @@ class SplitNode(list):
         Args:
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
             label (str, optional): The label of the node.
-            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded.
-                Defaults to False.
+            drop_empty (bool, optional): If True (default), split levels that produce an empty DataFrame are
+                discarded. Set to False to retain levels with zero observations.
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Returns:
             AnalysisTree: The modified AnalysisTree with the new split node added.
@@ -892,7 +903,7 @@ class SplitNode(list):
         path: list,
         expr: str = None,
         label: str = None,
-        drop_empty: bool = False,
+        drop_empty: bool = True,
         **kwargs,
     ):
         """Add a split node at a specific path in the tree.
@@ -902,8 +913,8 @@ class SplitNode(list):
                 NOT the levels of the data that are being analyzed.
             expr (str, optional): The representation of an expression or the name of a column to be used for splitting the data.
             label (str, optional): The label of the node.
-            drop_empty (bool, optional): If True, split levels that produce an empty DataFrame are discarded.
-                Defaults to False.
+            drop_empty (bool, optional): If True (default), split levels that produce an empty DataFrame are
+                discarded. Set to False to retain levels with zero observations.
             **kwargs: Keyword arguments mapping group names to their corresponding split expressions.
         Returns:
             AnalysisTree: The modified AnalysisTree with the new split node added at the specified path.

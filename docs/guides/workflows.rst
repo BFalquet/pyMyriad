@@ -150,6 +150,26 @@ Create pivot tables with multiple dimensions:
    # Both pivots combined
    table = simple_table(result, by='df.Gender', pivot_statistics=True)
 
+Cascading Table Layout
+----------------------
+
+Use :func:`cascade_table` to produce a table that includes every tree node —
+splits, summaries, and analyses — providing a full view of the hierarchical
+analysis structure:
+
+.. code-block:: python
+
+   from pyMyriad import cascade_table
+
+   # Full tree view: splits, summaries, and analyses in one table
+   table = cascade_table(result)
+
+   # Pivot statistics as columns while keeping context rows for each split level
+   table = cascade_table(result, pivot_statistics=True)
+
+   # Both axis pivots combined
+   table = cascade_table(result, by='df.Gender', pivot_statistics=True)
+
 Visualization
 -------------
 

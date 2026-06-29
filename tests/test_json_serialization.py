@@ -75,7 +75,7 @@ def test_split_expr_round_trip():
     assert split_dict["type"] == "SplitNode"
     assert split_dict["expr"] == "df.A > 20"
     assert split_dict["label"] == "A_split"
-    assert split_dict["drop_empty"] is False
+    assert split_dict["drop_empty"] is True
 
     rt = AnalysisTree.from_dict(d)
     assert isinstance(rt[0], SplitNode)
