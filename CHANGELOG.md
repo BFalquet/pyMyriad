@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `row_pivot` parameter on `simple_table()`/`gt_table()` for stacking a chosen subset of statistics as labelled rows instead of columns, while a `by=` split stays pivoted into columns — the common clinical descriptive-statistics layout (`n`, `Mean (SD)`, `Median (Q1, Q3)`, `Min, Max` each on their own row). Requires `pivot_statistics=True`; not currently supported with `cascade_table()`/`gt_table(cascade=True)` (#62):
+  - Accepts either a list of statistic names (joined with `", "` when there's more than one) or a callable dispatched by parameter name exactly like `analyze_by()`/`cross_analyze_by()`, for full control over combining/formatting (e.g. `lambda mean, sd: f"{mean} ({sd})"`)
+  - New private helpers `_row_pivot_stat_names()` and `_apply_row_pivot()` in `listing.py`
+  - New example notebook **examples/notebooks/08_row_pivot_clinical_table.ipynb** building a full Visit x Arm x (Value/Change from Baseline) table, including the technique of pivoting two split labels at once (`by=["Arm", "Measure"]`) to fold a derived metric into a single tree
 - **JSON serialization / deserialization** for `AnalysisTree`, enabling interoperability with AI agents and external systems:
   - `AnalysisTree.to_dict()` — serialize the full tree structure to a plain Python `dict`
   - `AnalysisTree.to_json(path=None, indent=2)` — serialize to a JSON string; optionally write to a file

@@ -101,6 +101,25 @@ Quick reference for the Jupyter notebook tutorials in `examples/notebooks/`. Eac
 
 ---
 
+### [08_row_pivot_clinical_table.ipynb](notebooks/08_row_pivot_clinical_table.ipynb)
+
+**Worked example: a clinical change-from-baseline table**
+
+- Stacking a subset of statistics (n, Mean (SD), Median (Q1, Q3), Min/Max) as
+  rows with `row_pivot`, instead of every statistic becoming its own column
+- Combining statistic names via a plain list (`["min", "max"]`) vs. a
+  callable dispatched by parameter name (`lambda mean, sd: f"{mean} ({sd})"`)
+- Folding a second "virtual" column dimension (Value vs. Change from
+  Baseline) into a single tree and a single `by=["Arm", "Measure"]` pivot, by
+  reshaping it into a literal split column
+- Building the final `gt_table()`-style HTML report with Arm spanners
+
+**Key concepts**: row_pivot, by with multiple labels, simple_table(), gt_table()
+
+**When to reference**: Clinical descriptive-statistics tables, replacing a hand-rolled `pd.concat()` wide-to-long reshape, combining several named statistics into one display cell
+
+---
+
 ## Quick Code Snippets by Task
 
 ### Basic Analysis
@@ -201,6 +220,8 @@ formatted = format_statistics(
 | Custom groups | 06 | Advanced Splitting |
 | Environment setup | 06 | Expression Environment |
 | Tree modification | 06 | split_at_by() |
+| Stacking statistics as rows | 08 | row_pivot |
+| Clinical change-from-baseline table | 08 | Worked Example |
 
 ## Learning Path
 
@@ -213,6 +234,7 @@ formatted = format_statistics(
 - **Tables/Reports**: Focus on 03_tables_and_listings.ipynb and 05_formatting_statistics.ipynb
 - **Visualizations**: Jump to 04_plots.ipynb
 - **Complex analyses**: Work through 02_analysis_trees.ipynb then 06_advanced_topics.ipynb
+- **Clinical-style tables**: 08_row_pivot_clinical_table.ipynb
 
 **For advanced users**:
 - Go directly to 06_advanced_topics.ipynb for cross-analysis and custom grouping
@@ -226,10 +248,11 @@ formatted = format_statistics(
 - `summarize_by()` - Notebooks 02, 06
 - `cross_analyze_by()` - Notebook 06
 - `split_at_by()` - Notebook 06
-- `simple_table()` - Notebooks 01, 03
-- `gt_table()` - Notebook 03
+- `simple_table()` - Notebooks 01, 03, 08
+- `gt_table()` - Notebooks 03, 08
 - `forest_plot()` - Notebook 04
 - `format_statistics()` - Notebook 05
+- `row_pivot` - Notebook 08
 
 **By data pattern**:
 - Single grouping variable: Notebook 01
