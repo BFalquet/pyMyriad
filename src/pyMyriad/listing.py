@@ -72,6 +72,21 @@ def _merge_path_into_string(df, path_col: str = "path") -> pd.DataFrame:
     return df
 
 
+def _ordered_categorical(series: pd.Series) -> pd.Categorical:
+    """Convert a string series to an ordered Categorical preserving first-appearance order.
+
+    The long-form rows produced by ``flatten()`` already appear in the order
+    the originating split produced them in (the category order for a
+    ``pd.Categorical`` split column, or kwarg order for multi-expression
+    splits) because that order is preserved through dict insertion order in
+    the result tree. ``pivot_table()``/``pivot()`` however sort their result
+    by the plain string value of the grouping columns, discarding that order.
+    Recording it as Categorical categories makes pivoting respect it instead.
+    """
+    categories = pd.unique(series)
+    return pd.Categorical(series, categories=categories, ordered=True)
+
+
 def _split_path_into_levels(
     df: pd.DataFrame, path_col: str = "path"
 ) -> tuple[pd.DataFrame, list]:
@@ -215,6 +230,12 @@ def _create_table(
         )
     )
 
+    # Preserve the originating split's row order (categorical dtype order, or
+    # kwarg order for multi-expression splits) instead of letting pivot_table
+    # re-sort rows/columns alphabetically.
+    df["path_pivot"] = _ordered_categorical(df["path_pivot"])
+    df["pivot_lvl"] = _ordered_categorical(df["pivot_lvl"])
+
     # Handle pivot columns if present
     pivot_columns = []
 
@@ -226,6 +247,7 @@ def _create_table(
             columns=["pivot_lvl", "statistics"],
             values="values",
             aggfunc="first",
+            observed=True,
         ).reset_index()
 
         # Flatten the MultiIndex columns
@@ -255,6 +277,7 @@ def _create_table(
             columns="pivot_lvl",
             values="values",
             aggfunc="first",
+            observed=True,
         ).reset_index()
 
     elif pivot_statistics:
@@ -266,14 +289,17 @@ def _create_table(
             columns="statistics",
             values="values",
             aggfunc="first",
+            observed=True,
         ).reset_index()
     else:
         # No pivoting
         pivot_columns = ["values"]
 
     # Revert joining of path_pivot back to list
-    df["path_pivot"] = df["path_pivot"].apply(
-        lambda x: x.split(" > ") if isinstance(x, str) else []
+    df["path_pivot"] = (
+        df["path_pivot"]
+        .astype(object)
+        .apply(lambda x: x.split(" > ") if isinstance(x, str) else [])
     )
 
     # Split path into level columns if requested
@@ -425,12 +451,17 @@ def _create_cascade_table(
         # Conver pivot_lvl to string for pivoting
         df["pivot_lvl"] = _merge_path_into_string(df, path_col="pivot_lvl")["pivot_lvl"]
 
+        # Preserve the originating split's order (categorical dtype order, or
+        # kwarg order) instead of letting pivot_table sort columns alphabetically.
+        df["pivot_lvl"] = _ordered_categorical(df["pivot_lvl"])
+
         df_pivot = df.pivot_table(
             index=["path_pivot", "label", "statistics"],
             columns="pivot_lvl",
             values="values",
             aggfunc="first",
             dropna=True,  # this will drop non-analysis rows. We will merge them back later to keep them in the final table.
+            observed=True,
         ).reset_index()
 
         # select unique path_pivot values to keep non analysis values and merge back the analysis values.
@@ -503,12 +534,17 @@ def _create_cascade_table(
         # Conver pivot_lvl to string for pivoting
         df["pivot_lvl"] = _merge_path_into_string(df, path_col="pivot_lvl")["pivot_lvl"]
 
+        # Preserve the originating split's order (categorical dtype order, or
+        # kwarg order) instead of letting pivot_table sort columns alphabetically.
+        df["pivot_lvl"] = _ordered_categorical(df["pivot_lvl"])
+
         df_pivot = df.pivot_table(
             index=["path_pivot", "label"],
             columns=["pivot_lvl", "statistics"],
             values="values",
             aggfunc="first",
             dropna=True,  # this will drop non-analysis rows. We will merge them back later to keep them in the final table.
+            observed=True,
         ).reset_index()
 
         # select unique path_pivot values to keep non analysis values and merge back the analysis values.
