@@ -40,6 +40,48 @@ import pandas as pd
 from .utils import analysis_to_string
 
 
+def _normalize_pivot_labels(pivot) -> tuple:
+    """Normalize a ``by``/``pivot`` argument into a tuple of exact split labels.
+
+    Accepts a single label as a string, an iterable of labels, or the
+    "no pivot" defaults (``None``, ``""``, ``()``). A bare string is wrapped
+    into a single-element tuple so that downstream membership checks
+    (``label in pivot_labels``) always test exact equality against one or
+    more labels, instead of accidentally testing whether ``label`` is a
+    *substring* of a single pivot string (e.g. ``"Arm" in "df.ARM"`` is
+    ``False`` while ``"Arm" in "df.Arm"`` is ``True`` purely by coincidence).
+
+    Args:
+        pivot: The raw ``by``/``pivot`` value as supplied by the caller.
+
+    Returns:
+        tuple: A tuple of label strings to match exactly against split labels.
+    """
+    if pivot is None or pivot == "":
+        return ()
+    if isinstance(pivot, str):
+        return (pivot,)
+    return tuple(pivot)
+
+
+def _collect_split_labels(node) -> set:
+    """Recursively collect every ``SplitDataNode`` label reachable from `node`.
+
+    Used to validate a ``by``/``pivot`` request against the labels that
+    actually exist in the tree, so a typo or mismatched label produces a
+    clear error instead of a silently unpivoted table.
+    """
+    labels = set()
+    if isinstance(node, SplitDataNode):
+        labels.add(node.label)
+        for child in node.values():
+            labels.update(_collect_split_labels(child))
+    elif isinstance(node, LvlDataNode):
+        for child in node.values():
+            labels.update(_collect_split_labels(child))
+    return labels
+
+
 def _serialize_summary_value(val):
     """Convert a summary value to a JSON-safe Python type.
 
@@ -188,7 +230,6 @@ class DataNode:
         pivot_lvl=(),
         data: bool = False,
     ) -> pd.DataFrame:
-
         path = path + ("analysis",)
         path_pivot = path_pivot + ("analysis",)
 
@@ -295,7 +336,6 @@ class SplitDataNode(dict):
         pivot_lvl=(),
         data: bool = False,
     ) -> pd.DataFrame:
-
         path = path + (self.label,)  # split_var
 
         if self.label in pivot_var:
@@ -601,10 +641,27 @@ class DataTree(dict):
         """Flatten a DataTree into a DataFrame.
         This method flattens the hierarchical structure of the DataTree into a pandas DataFrame.
         Args:
-            pivot (str, optional): The name of a split to pivot by. Defaults to an empty tuple.
+            pivot (str, optional): The label of a split to pivot by, or an iterable of
+                split labels to pivot by simultaneously. Matched by exact equality
+                against split labels. Defaults to an empty tuple (no pivoting).
         Returns:
             pd.DataFrame: A flattened representation of the DataTree.
+        Raises:
+            ValueError: If `pivot` names a label that does not match any split in the tree.
         """
+
+        pivot_var = _normalize_pivot_labels(pivot)
+
+        if pivot_var:
+            known_labels = set()
+            for child in self.values():
+                known_labels.update(_collect_split_labels(child))
+            unknown = [label for label in pivot_var if label not in known_labels]
+            if unknown:
+                raise ValueError(
+                    f"by/pivot label(s) {unknown} do not match any split in the tree. "
+                    f"Known split labels: {sorted(known_labels)}"
+                )
 
         depth = 0
         path = ("root",)
@@ -631,7 +688,7 @@ class DataTree(dict):
             x.__flatten__(
                 path=path,
                 depth=depth + 1,
-                pivot_var=pivot,
+                pivot_var=pivot_var,
                 path_pivot=path_pivot,
                 pivot_split=pivot_split,
                 pivot_lvl=pivot_lvl,
