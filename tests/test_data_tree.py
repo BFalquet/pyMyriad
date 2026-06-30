@@ -6,7 +6,11 @@ import pandas as pd
 import pytest
 
 from pyMyriad import AnalysisTree, DataTree, DataNode, LvlDataNode, SplitDataNode
-from pyMyriad.data_tree import _serialize_summary_value
+from pyMyriad.data_tree import (
+    _collect_split_labels,
+    _normalize_pivot_labels,
+    _serialize_summary_value,
+)
 
 
 def test_data_tree_empty():
@@ -376,3 +380,84 @@ def test_integration_nan_in_summary():
     child = next(iter(parsed["children"].values()))
     summary = child["summary"]
     assert summary["mean"] == "NaN"
+
+
+# region _normalize_pivot_labels / _collect_split_labels / by= exact matching (issue #59)
+
+
+def test_normalize_pivot_labels_defaults_to_empty_tuple():
+    assert _normalize_pivot_labels(()) == ()
+    assert _normalize_pivot_labels("") == ()
+    assert _normalize_pivot_labels(None) == ()
+
+
+def test_normalize_pivot_labels_wraps_a_single_string():
+    assert _normalize_pivot_labels("Arm") == ("Arm",)
+
+
+def test_normalize_pivot_labels_passes_through_an_iterable():
+    assert _normalize_pivot_labels(["Arm", "Visit"]) == ("Arm", "Visit")
+    assert _normalize_pivot_labels(("Arm",)) == ("Arm",)
+
+
+def test_collect_split_labels(simple_df):
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .split_by("df.A", label="A Level")
+        .analyze_by(n=lambda df: len(df))
+    )
+    result = tree.run(simple_df, environ=ENVIRON)
+    labels = set()
+    for child in result.values():
+        labels.update(_collect_split_labels(child))
+    assert labels == {"Gender", "A Level"}
+
+
+def test_flatten_by_matches_label_exactly_not_as_substring(simple_df):
+    """A split labeled "Gender" must not be pivoted by a string that merely
+    contains "Gender" as a substring (e.g. an unrelated label/expression)."""
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .analyze_by(n=lambda df: len(df))
+    )
+    result = tree.run(simple_df, environ=ENVIRON)
+
+    # Exact label match pivots correctly.
+    flat = result.__flatten__(pivot="Gender")
+    assert set(flat["pivot_lvl"].explode().dropna()) == {"M", "F"}
+
+    # A string that merely contains "Gender" as a substring is not a match
+    # and must raise instead of silently returning an unpivoted table.
+    with pytest.raises(ValueError, match="Gender"):
+        result.__flatten__(pivot="prefix.Gender")
+
+
+def test_flatten_by_unknown_label_raises_value_error(simple_df):
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .analyze_by(n=lambda df: len(df))
+    )
+    result = tree.run(simple_df, environ=ENVIRON)
+
+    with pytest.raises(ValueError, match="Country"):
+        result.__flatten__(pivot="Country")
+
+
+def test_flatten_by_accepts_list_of_labels(simple_df):
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .split_by("df.A", label="A Level")
+        .analyze_by(n=lambda df: len(df))
+    )
+    result = tree.run(simple_df, environ=ENVIRON)
+    # Should not raise, and should pivot by both labels.
+    flat = result.__flatten__(pivot=["Gender", "A Level"])
+    assert "Gender" in set(flat["pivot_split"].explode().dropna())
+    assert "A Level" in set(flat["pivot_split"].explode().dropna())
+
+
+# endregion

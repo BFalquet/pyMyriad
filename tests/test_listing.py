@@ -486,5 +486,41 @@ def test_helper_suppress_duplicates():
     assert list(result["B"]) == [1, 2, 3, 4, 5]
 
 
+def test_simple_table_by_does_not_substring_match_split_label():
+    """Regression test for #59: by= must match a split's label exactly.
+
+    A split labeled "Arm" must not accidentally pivot (or fail to pivot)
+    based on whether the requested `by` string happens to contain "Arm" as
+    a substring of something else - it must match the label exactly, and
+    raise a clear error when there is no match.
+    """
+    df = pd.DataFrame(
+        {
+            "ARM": ["Placebo", "Active", "Placebo", "Active"],
+            "Outcome": [1, 2, 3, 4],
+        }
+    )
+    atree = (
+        AnalysisTree()
+        .split_by("df.ARM", label="Arm")
+        .analyze_by(mean=lambda df: np.mean(df.Outcome))
+    )
+    dtree = atree.run(df)
+
+    # Exact label match pivots correctly.
+    result = simple_table(dtree, by="Arm")
+    assert "Placebo" in result.columns
+    assert "Active" in result.columns
+
+    # A by= value that happens to contain the label as a substring (or vice
+    # versa) must not silently match - it should raise instead of silently
+    # returning an unpivoted table.
+    with pytest.raises(ValueError, match="Arm"):
+        simple_table(dtree, by="df.ARM")
+
+    with pytest.raises(ValueError, match="Arm"):
+        cascade_table(dtree, by="df.ARM")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
