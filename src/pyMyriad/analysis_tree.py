@@ -589,7 +589,19 @@ class AnalysisTree(list):
             label (str, optional): The label for the analysis node. Defaults to an empty string.
             ref_lvl (str, optional): The reference level for comparison. Defaults to an empty string, which lead to comparing every level with each other.
             termination (bool, optional): Indicates if this node is a termination node. Defaults to True.
-            **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
+            **kwargs: Keyword arguments where keys are analysis names and values are their
+                corresponding expressions. Each value can be a string expression or a callable.
+                Callables are dispatched by parameter name, exactly like ``analyze_by``:
+
+                - ``lambda df: ...`` — receives only the current-level DataFrame.
+                - ``lambda ref_df: ...`` — receives only the reference-level DataFrame.
+                - ``lambda df, ref_df: ...`` — receives both DataFrames (the usual case
+                  for a comparison statistic).
+                - ``lambda df, ref_df, _N: ...`` — also receives the denominator count
+                  list (requires ``denom`` to be set on the :class:`AnalysisTree`).
+
+                A callable must declare at least one of ``df``, ``ref_df``, ``_N`` by name;
+                only the parameters it declares are passed.
 
         Returns:
             AnalysisTree: The modified AnalysisTree with the new cross-analysis node added.
@@ -597,6 +609,10 @@ class AnalysisTree(list):
             >>> a_tree = AnalysisTree()
             >>> a_tree.split_by(m = "df.A > 50")
             >>> a_tree = a_tree.cross_analyze_by(m = "np.mean(df.A) - np.mean(ref_df.A)", s = "np.median(df.B) - np.median(ref_df.B)")
+            >>> a_tree = a_tree.cross_analyze_by(
+            ...     n=lambda df: len(df),
+            ...     mean_diff=lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A),
+            ... )
         """
 
         for i in range(len(self)):
@@ -1081,7 +1097,19 @@ class SplitNode(list):
             label (str, optional): The label for the analysis node. Defaults to an empty string.
             ref_lvl (str, optional): The reference level for comparison. Defaults to an empty string, which lead to comparing every level with each other.
             termination (bool, optional): Indicates if this node is a termination node. Defaults to True.
-            **kwargs: Keyword arguments where keys are analysis names and values are their corresponding expressions.
+            **kwargs: Keyword arguments where keys are analysis names and values are their
+                corresponding expressions. Each value can be a string expression or a callable.
+                Callables are dispatched by parameter name, exactly like ``analyze_by``:
+
+                - ``lambda df: ...`` — receives only the current-level DataFrame.
+                - ``lambda ref_df: ...`` — receives only the reference-level DataFrame.
+                - ``lambda df, ref_df: ...`` — receives both DataFrames (the usual case
+                  for a comparison statistic).
+                - ``lambda df, ref_df, _N: ...`` — also receives the denominator count
+                  list (requires ``denom`` to be set on the :class:`AnalysisTree`).
+
+                A callable must declare at least one of ``df``, ``ref_df``, ``_N`` by name;
+                only the parameters it declares are passed.
 
         Returns:
             AnalysisTree: The modified AnalysisTree with the new cross-analysis node added.
@@ -1089,6 +1117,10 @@ class SplitNode(list):
             >>> a_tree = AnalysisTree()
             >>> a_tree.split_by(m = "df.A > 50")
             >>> a_tree = a_tree.cross_analyze_by(m = "np.mean(df.A) - np.mean(ref_df.A)", s = "np.median(df.B) - np.median(ref_df.B)")
+            >>> a_tree = a_tree.cross_analyze_by(
+            ...     n=lambda df: len(df),
+            ...     mean_diff=lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A),
+            ... )
         """
         is_split_node = [isinstance(x, SplitNode) for x in self]
         # length 0 OR (no split node and no termination signal)

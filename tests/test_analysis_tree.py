@@ -345,6 +345,74 @@ def test_scope_cross_eval():
     assert result_func["sum_diff"] == 30  # (60) - (30) = 30
 
 
+def test_scope_cross_eval_single_arg_df_callable():
+    """Regression test for #60: a single-argument `lambda df: ...` callable -
+    valid for analyze_by/scope_eval - must also work in cross_analyze_by,
+    dispatched by parameter name instead of being called positionally with
+    both df and ref_df.
+    """
+    from pyMyriad.utils import scope_cross_eval
+
+    df = pd.DataFrame({"A": [10, 20, 30]})
+    ref_df = pd.DataFrame({"A": [5, 10, 15]})
+
+    result = scope_cross_eval(df=df, ref_df=ref_df, n=lambda df: len(df))
+
+    assert result == {"n": 3}
+
+
+def test_scope_cross_eval_single_arg_ref_df_callable():
+    """A single-argument `lambda ref_df: ...` callable should also be dispatched
+    by name, receiving only ref_df."""
+    from pyMyriad.utils import scope_cross_eval
+
+    df = pd.DataFrame({"A": [10, 20, 30]})
+    ref_df = pd.DataFrame({"A": [5, 10, 15]})
+
+    result = scope_cross_eval(df=df, ref_df=ref_df, ref_n=lambda ref_df: len(ref_df))
+
+    assert result == {"ref_n": 3}
+
+
+def test_scope_cross_eval_unrecognized_signature_raises_clear_typeerror():
+    """A callable that declares none of df/ref_df/_N should raise a clear,
+    actionable TypeError instead of a confusing arity mismatch deep in eval."""
+    from pyMyriad.utils import scope_cross_eval
+
+    df = pd.DataFrame({"A": [10, 20, 30]})
+    ref_df = pd.DataFrame({"A": [5, 10, 15]})
+
+    with pytest.raises(TypeError, match="bad"):
+        scope_cross_eval(df=df, ref_df=ref_df, bad=lambda: 1)
+
+
+def test_cross_analyze_by_mixes_single_and_two_arg_lambdas():
+    """cross_analyze_by should accept a single-arg `lambda df: ...` callable
+    (e.g. a plain count) alongside a two-arg `lambda df, ref_df: ...`
+    comparison callable in the same call, matching analyze_by's flexibility."""
+    df = pd.DataFrame(
+        {
+            "A": [10, 20, 30, 40, 50, 60],
+            "B": [1, 1, 2, 2, 3, 3],
+        }
+    )
+
+    tree = (
+        AnalysisTree()
+        .split_by("df.B")
+        .cross_analyze_by(
+            ref_lvl="1",
+            n=lambda df: len(df),
+            mean_diff=lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A),
+        )
+    )
+
+    result = tree.run(df, environ={"np": np})
+    result_str = str(result)
+    assert "n: 2" in result_str
+    assert "mean_diff: 20.0" in result_str
+
+
 # --- denom parameter tests ---
 
 
