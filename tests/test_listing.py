@@ -522,5 +522,138 @@ def test_simple_table_by_does_not_substring_match_split_label():
         cascade_table(dtree, by="df.ARM")
 
 
+def test_simple_table_pivot_columns_preserve_categorical_order():
+    """Regression test for #61: pivoted columns follow category order, not alphabetical.
+
+    "Week 12" sorts before "Week 4" and "Week 8" alphabetically, so a plain
+    string sort would scramble visit chronology. The split column's ordered
+    Categorical dtype should be respected instead.
+    """
+    df = pd.DataFrame(
+        {
+            "AVISIT": pd.Categorical(
+                ["Week 4", "Baseline", "Week 12", "Week 8"] * 5,
+                categories=["Baseline", "Week 4", "Week 8", "Week 12"],
+                ordered=True,
+            ),
+            "Val": np.arange(20.0),
+        }
+    )
+    atree = (
+        AnalysisTree().split_by("df.AVISIT").analyze_by(mean=lambda df: np.mean(df.Val))
+    )
+    dtree = atree.run(df)
+
+    result = simple_table(dtree, by="df.AVISIT")
+    assert list(result.columns) == [
+        "Statistic",
+        "Baseline",
+        "Week 4",
+        "Week 8",
+        "Week 12",
+    ]
+
+
+def test_simple_table_pivot_statistics_columns_preserve_categorical_order():
+    """Regression test for #61: same ordering guarantee with pivot_statistics=True."""
+    df = pd.DataFrame(
+        {
+            "AVISIT": pd.Categorical(
+                ["Week 4", "Baseline", "Week 12", "Week 8"] * 5,
+                categories=["Baseline", "Week 4", "Week 8", "Week 12"],
+                ordered=True,
+            ),
+            "Val": np.arange(20.0),
+        }
+    )
+    atree = (
+        AnalysisTree().split_by("df.AVISIT").analyze_by(mean=lambda df: np.mean(df.Val))
+    )
+    dtree = atree.run(df)
+
+    result = simple_table(dtree, by="df.AVISIT", pivot_statistics=True)
+    assert list(result.columns) == [
+        "Baseline||mean",
+        "Week 4||mean",
+        "Week 8||mean",
+        "Week 12||mean",
+    ]
+
+
+def test_cascade_table_pivot_columns_preserve_categorical_order():
+    """Regression test for #61: cascade_table column order also follows category order."""
+    df = pd.DataFrame(
+        {
+            "AVISIT": pd.Categorical(
+                ["Week 4", "Baseline", "Week 12", "Week 8"] * 5,
+                categories=["Baseline", "Week 4", "Week 8", "Week 12"],
+                ordered=True,
+            ),
+            "Val": np.arange(20.0),
+        }
+    )
+    atree = (
+        AnalysisTree().split_by("df.AVISIT").analyze_by(mean=lambda df: np.mean(df.Val))
+    )
+    dtree = atree.run(df)
+
+    result = cascade_table(dtree, by="df.AVISIT")
+    pivoted_cols = [c for c in result.columns if c not in ("_Level_0", "statistics")]
+    assert pivoted_cols == ["Baseline", "Week 4", "Week 8", "Week 12"]
+
+    result_stats = cascade_table(dtree, by="df.AVISIT", pivot_statistics=True)
+    assert list(result_stats.columns) == [
+        "Baseline||mean",
+        "Week 4||mean",
+        "Week 8||mean",
+        "Week 12||mean",
+    ]
+
+
+def test_simple_table_row_order_preserves_categorical_order_for_unpivoted_split():
+    """Regression test for #61: a non-pivoted categorical split keeps its row order.
+
+    Mirrors the real-world pattern in examples/lab_change_from_baseline_table_v2.py:
+    Visit is split first (and not pivoted), Arm is split second and pivoted -
+    the Visit row order used to require a hand-written sort_values(key=...).
+    """
+    df = pd.DataFrame(
+        {
+            "AVISIT": pd.Categorical(
+                ["Week 4", "Baseline", "Week 12", "Week 8"] * 5,
+                categories=["Baseline", "Week 4", "Week 8", "Week 12"],
+                ordered=True,
+            ),
+            "ARM": ["A", "B"] * 10,
+            "Val": np.arange(20.0),
+        }
+    )
+    atree = (
+        AnalysisTree()
+        .split_by("df.AVISIT", label="Visit")
+        .split_by("df.ARM", label="Arm")
+        .analyze_by(mean=lambda df: np.mean(df.Val))
+    )
+    dtree = atree.run(df)
+
+    result = simple_table(dtree, by="Arm")
+    visits = result["_Level_1"].tolist()
+    assert visits == ["Baseline", "Week 4", "Week 8", "Week 12"]
+
+
+def test_simple_table_non_categorical_split_remains_alphabetical():
+    """Non-categorical splits have no inherent order, so alphabetical stays the default."""
+    df = pd.DataFrame(
+        {"Group": ["Zebra", "Apple", "Mango"] * 5, "Val": np.arange(15.0)}
+    )
+    atree = (
+        AnalysisTree().split_by("df.Group").analyze_by(mean=lambda df: np.mean(df.Val))
+    )
+    dtree = atree.run(df)
+
+    result = simple_table(dtree, by="df.Group")
+    assert list(result.columns) == ["Statistic", "Apple", "Mango", "Zebra"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
