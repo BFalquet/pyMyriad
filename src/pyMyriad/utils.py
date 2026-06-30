@@ -271,22 +271,29 @@ def scope_cross_eval(
         extra_context (dict, optional): Additional context to include in the evaluation. Defaults to None.
         **kwargs: Expressions to evaluate or functions to execute, where keys are variable names and values are either:
                  - strings (expressions to evaluate, with `df` and `ref_df` available)
-                 - callable functions that take two arguments: (df, ref_df)
+                 - callable functions dispatched by parameter name, the same way `analyze_by`
+                   dispatches callables in `scope_eval`: a function may declare any subset of
+                   `df`, `ref_df`, `_N` and only the parameters it declares are passed.
     Returns:
         dict: A dictionary with keys as the names of the evaluated expressions/functions and values as the results.
     Examples:
         # String expressions comparing two DataFrames
         >>> scope_cross_eval(df=df, ref_df=ref_df, mean_diff="np.mean(df.A) - np.mean(ref_df.A)")
 
-        # Function expressions (must accept two arguments: df and ref_df)
+        # Function expressions taking both df and ref_df
         >>> scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: np.mean(df.A) - np.mean(ref_df.A))
+
+        # Function expressions using only df (e.g. a count that doesn't need ref_df)
+        >>> scope_cross_eval(df=df, ref_df=ref_df, n=lambda df: len(df))
 
         # Mixed usage
         >>> scope_cross_eval(df=df, ref_df=ref_df, mean_diff=lambda df, ref_df: df.A.mean() - ref_df.A.mean(), count="len(df)")
 
     Notes:
-        - For string expressions, both `df` and `ref_df` are available as variables.
-        - For functions, they must accept two arguments: (df, ref_df).
+        - For string expressions, `df`, `ref_df`, and `_N` are all available as variables.
+        - For functions, parameters are matched by name (`df`, `ref_df`, `_N`), exactly like
+          `analyze_by`/`scope_eval` - a function only receives the parameters it declares, so
+          e.g. `lambda df: ...` (valid for `analyze_by`) also works unchanged here.
         - The function uses `eval` for strings, so be cautious about evaluating untrusted input.
     """
 
@@ -307,16 +314,23 @@ def scope_cross_eval(
             has_df = "df" in params
             has_ref_df = "ref_df" in params
             has_N = "_N" in params
+
+            if not (has_df or has_ref_df or has_N):
+                raise TypeError(
+                    f"cross_analyze_by callable for '{name}' must declare at least one "
+                    f"of the parameters 'df', 'ref_df', '_N' (got parameters: {params}). "
+                    "Examples: lambda df: ..., lambda df, ref_df: ..., "
+                    "lambda df, ref_df, _N: ..."
+                )
+
+            call_kwargs = {}
+            if has_df:
+                call_kwargs["df"] = df
+            if has_ref_df:
+                call_kwargs["ref_df"] = ref_df
             if has_N:
-                call_kwargs = {}
-                if has_df:
-                    call_kwargs["df"] = df
-                if has_ref_df:
-                    call_kwargs["ref_df"] = ref_df
                 call_kwargs["_N"] = _N
-                results[name] = expr_or_func(**call_kwargs)
-            else:
-                results[name] = expr_or_func(df, ref_df)
+            results[name] = expr_or_func(**call_kwargs)
         else:
             # Treat as string expression
             results[name] = eval(
