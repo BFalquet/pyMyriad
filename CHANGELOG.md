@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `drop_empty` parameter on `split_by()`, `split_at_by()`, and `split_at_root_by()` (and on `SplitNode` directly) to optionally discard split levels that produce an empty DataFrame. Defaults to `False` (backward-compatible). Useful when conditional splits may not be satisfied by every subset of the data.
 - Categorical column support: `SplitNode.run()` now ties `observed=<drop_empty>` in `pandas.groupby` to the `drop_empty` parameter, so categorical split behavior is consistent with all other splits. With `drop_empty=False` (default) all category levels—including those with zero observations—are retained as empty DataFrames. With `drop_empty=True` only observed (non-empty) category levels are returned. Passing an explicit value for `observed` also silences the pandas ≥ 2.2 `FutureWarning` about the `observed` default changing. Both `groupby` calls in `plots.py` were updated to `observed=True` for the same reason.
 
+### Documentation
+- Added a module-level docstring to `src/pyMyriad/__init__.py` grouping the 13 public exports by purpose (construction, results, tables, plots, formatting) with one-line descriptions and a workflow example, so `help(pyMyriad)` is now useful (#47).
+
 ## [0.1.0] - 2026-03-22
 
 ### Added
