@@ -34,6 +34,7 @@ See also:
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -162,6 +163,102 @@ def _suppress_duplicate_values(df: pd.DataFrame, columns: list) -> pd.DataFrame:
     return df
 
 
+def _row_pivot_stat_names(combiner) -> list:
+    """Return the statistic names a row_pivot entry needs, in the order to fetch them.
+
+    A list of names is returned as-is. A callable is dispatched by parameter
+    name, exactly like ``analyze_by``/``cross_analyze_by`` - its parameter
+    names are the statistic names to fetch and pass to it by keyword.
+    """
+    if callable(combiner):
+        return list(inspect.signature(combiner).parameters.keys())
+    return list(combiner)
+
+
+def _apply_row_pivot(
+    df: pd.DataFrame, pivot_columns: list, row_pivot: dict, by: str
+) -> tuple[pd.DataFrame, list]:
+    """Stack a subset of pivoted statistics as labelled rows instead of columns.
+
+    ``df`` must already be pivoted with ``pivot_statistics=True`` (and ``by``
+    optionally pivoted into column names of the form ``"{group}||{statistic}"``).
+
+    For each ``row_pivot`` entry ``label: combiner``, one row per original row
+    is emitted with a ``Statistic`` column set to ``label``. ``combiner`` is
+    either:
+
+    - a list of statistic names: a single name is used as-is, multiple names
+      are joined with ``", "``, e.g. ``["min", "max"]`` -> ``"30.1, 60.2"``.
+    - a callable, dispatched by parameter name like ``analyze_by``: its
+      parameters name the statistics to fetch, and its return value is used
+      directly, e.g. ``lambda mean, sd: f"{mean} ({sd})"`` -> ``"45.1 (7.0)"``.
+
+    Statistics not referenced by any ``row_pivot`` entry are dropped.
+
+    Args:
+            df: The pivot_statistics=True result, indexed by the original row order.
+            pivot_columns: The statistic-pivoted column names of ``df`` (either
+                    plain statistic names, or ``"{group}||{statistic}"`` when ``by`` was
+                    also pivoted).
+            row_pivot: Mapping of new row label -> list of statistic names or a
+                    combiner callable.
+            by: The ``by`` argument that produced ``pivot_columns`` (used to tell
+                    plain statistic columns apart from ``"{group}||{statistic}"`` ones).
+
+    Returns:
+            Tuple of (long-form DataFrame with a ``Statistic`` column and one
+            column per ``by`` group, list of the new value column names).
+    """
+    index_cols = [c for c in df.columns if c not in pivot_columns]
+
+    if by != "":
+        groups: dict[str, dict[str, str]] = {}
+        for col in pivot_columns:
+            group, stat = col.split("||", 1)
+            groups.setdefault(group, {})[stat] = col
+        value_cols = list(dict.fromkeys(col.split("||", 1)[0] for col in pivot_columns))
+    else:
+        groups = {"Value": {stat: stat for stat in pivot_columns}}
+        value_cols = ["Value"]
+
+    blocks = []
+    for rank, (label, combiner) in enumerate(row_pivot.items()):
+        stat_names = _row_pivot_stat_names(combiner)
+        block = df[index_cols].copy()
+        block["Statistic"] = label
+        block["_row_pivot_rank"] = rank
+        for group_name, stat_map in groups.items():
+            missing = [s for s in stat_names if s not in stat_map]
+            if missing:
+                raise KeyError(
+                    f"row_pivot label '{label}' references unknown statistic(s) "
+                    f"{missing} for group '{group_name}'. Available statistics: "
+                    f"{sorted(stat_map)}"
+                )
+            cols = [stat_map[s] for s in stat_names]
+            if callable(combiner):
+                block[group_name] = df[cols].apply(
+                    lambda row, names=stat_names, fn=combiner: fn(
+                        **dict(zip(names, row))
+                    ),
+                    axis=1,
+                )
+            elif len(cols) == 1:
+                block[group_name] = df[cols[0]]
+            else:
+                block[group_name] = df[cols].astype(str).agg(", ".join, axis=1)
+        blocks.append(block)
+
+    result = pd.concat(blocks, ignore_index=False)
+    result["_orig_order"] = result.index
+    result = result.sort_values(["_orig_order", "_row_pivot_rank"], kind="stable")
+    result = result.drop(columns=["_orig_order", "_row_pivot_rank"]).reset_index(
+        drop=True
+    )
+
+    return result, value_cols
+
+
 # endregion
 
 # region core table
@@ -176,6 +273,7 @@ def _create_table(
     split_path: bool = True,
     suppress_duplicates: bool = True,
     pivot_statistics: bool = False,
+    row_pivot: Optional[dict] = None,
 ) -> pd.DataFrame:
     """Internal function to create a pandas DataFrame table from a DataTree.
 
@@ -187,10 +285,16 @@ def _create_table(
             split_path: If True, split the path into separate hierarchical columns.
             suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
             pivot_statistics: If True, pivot statistics into columns instead of rows.
+            row_pivot: Mapping of new row label -> a list of statistic names, or a
+                    combiner callable dispatched by parameter name like analyze_by.
+                    See _apply_row_pivot for the exact combination rules. Requires
+                    pivot_statistics=True.
 
     Returns:
             A formatted pandas DataFrame.
     """
+    if row_pivot is not None and not pivot_statistics:
+        raise ValueError("row_pivot requires pivot_statistics=True")
     # Get flattened data with unnested statistics
     df = flatten(dtree, unnest=True, by=by)
 
@@ -295,6 +399,10 @@ def _create_table(
         # No pivoting
         pivot_columns = ["values"]
 
+    # Stack a subset of the pivoted statistics as labelled rows instead of columns.
+    if row_pivot is not None:
+        df, pivot_columns = _apply_row_pivot(df, pivot_columns, row_pivot, by=by)
+
     # Revert joining of path_pivot back to list
     df["path_pivot"] = (
         df["path_pivot"]
@@ -310,7 +418,10 @@ def _create_table(
 
     df = df.drop(columns=["path_pivot"])
     # reorder columns to have levels first
-    if pivot_statistics and by == "":
+    if row_pivot is not None:
+        # row_pivot already produced an explicit 'Statistic' row-label column.
+        display_cols = list(pivot_level_cols) + ["Statistic"] + pivot_columns
+    elif pivot_statistics and by == "":
         # When only pivoting statistics, don't include 'statistics' column
         display_cols = list(pivot_level_cols) + pivot_columns
     elif pivot_statistics and by != "":
@@ -329,7 +440,7 @@ def _create_table(
 
     # Rename columns
     rename_map = {"values": "Value"}
-    if not pivot_statistics or by != "":
+    if row_pivot is None and (not pivot_statistics or by != ""):
         rename_map["statistics"] = "Statistic"
     if include_label:
         rename_map["label"] = "Analysis"
@@ -365,6 +476,7 @@ def simple_table(
     split_path: bool = True,
     suppress_duplicates: bool = True,
     pivot_statistics: bool = False,
+    row_pivot: Optional[dict] = None,
 ) -> pd.DataFrame:
     """Create a simple pandas DataFrame table from a DataTree showing only analysis results.
 
@@ -383,13 +495,25 @@ def simple_table(
             suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
             pivot_statistics: If True, pivot statistics into columns instead of rows;
                     the statistics column is replaced by individual named columns.
+            row_pivot: Mapping of new row label to a list of statistic names, or to a
+                    combiner callable, to stack as that row instead of as columns.
+                    A list is joined with ``", "`` when it has more than one name
+                    (a single name is used as-is), e.g.
+                    ``{"n": ["n"], "Min, Max": ["min", "max"]}`` ->
+                    ``"Min, Max"`` row reads ``"30.1, 60.2"``. A callable is
+                    dispatched by parameter name like ``analyze_by`` and its return
+                    value is used directly, for full control over formatting, e.g.
+                    ``{"Mean (SD)": lambda mean, sd: f"{mean} ({sd})"}`` ->
+                    ``"45.1 (7.0)"``. Statistics not referenced by any entry are
+                    dropped. Requires ``pivot_statistics=True``.
 
     Returns:
             A formatted pandas DataFrame with only analysis results. Path hierarchy
             columns are named ``_Level_0``, ``_Level_1``, etc. The statistics and
             values columns are labelled ``Statistic`` and ``Value`` respectively
             (unless ``pivot_statistics=True``, in which case statistics become
-            individual column names).
+            individual column names, unless ``row_pivot`` is also given, in which
+            case a subset of those statistics are stacked back into labelled rows).
 
     See Also:
             cascade_table: Similar function that includes all tree nodes.
@@ -402,6 +526,7 @@ def simple_table(
         split_path=split_path,
         suppress_duplicates=suppress_duplicates,
         pivot_statistics=pivot_statistics,
+        row_pivot=row_pivot,
     )
 
 
@@ -644,6 +769,7 @@ def gt_table(
     split_path: bool = True,
     suppress_duplicates: bool = True,
     pivot_statistics: bool = False,
+    row_pivot: Optional[dict] = None,
     title: Optional[str] = "Analysis Summary",
     subtitle: Optional[str] = None,
     decimals: int = 3,
@@ -661,12 +787,16 @@ def gt_table(
             unnest: If True, the statisttics are represented in separate rows; if False,
                     only the summary value is shown.
             cascade: If True, include all tree nodes (splits, summaries, and analyses);
-                    otherwise only analysis rows are shown.
+                    otherwise only analysis rows are shown. Not compatible with `row_pivot`.
             split_path: If True, split the path into separate hierarchical columns.
             suppress_duplicates: If True, suppress consecutive duplicate values in hierarchy columns.
             pivot_statistics: If True, pivot statistics into columns instead of rows.
                     Compatible with the `by` argument - when both are used, creates
                     combined columns like "GroupName (statistic)".
+            row_pivot: Mapping of new row label to a list of statistic names or a
+                    combiner callable, to stack as that row instead of as columns.
+                    See simple_table for the exact combination rules. Requires
+                    ``pivot_statistics=True`` and ``cascade=False``.
             title: Optional table title.
             subtitle: Optional table subtitle.
             decimals: Number of decimals for numeric formatting.
@@ -676,6 +806,7 @@ def gt_table(
 
     Raises:
             ImportError: If the great-tables package is not installed.
+            ValueError: If `row_pivot` is combined with `cascade=True`.
     """
 
     try:
@@ -685,15 +816,27 @@ def gt_table(
             "great-tables is required for gt_table(). Install with `pip install great-tables`."
         ) from e
 
+    if row_pivot is not None and cascade:
+        raise ValueError("row_pivot is not supported together with cascade=True")
+
     # Choose the appropriate table function based on cascade parameter
-    table_func = cascade_table if cascade else simple_table
-    display_df = table_func(
-        dtree,
-        by=by,
-        split_path=split_path,
-        suppress_duplicates=suppress_duplicates,
-        pivot_statistics=pivot_statistics,
-    )
+    if cascade:
+        display_df = cascade_table(
+            dtree,
+            by=by,
+            split_path=split_path,
+            suppress_duplicates=suppress_duplicates,
+            pivot_statistics=pivot_statistics,
+        )
+    else:
+        display_df = simple_table(
+            dtree,
+            by=by,
+            split_path=split_path,
+            suppress_duplicates=suppress_duplicates,
+            pivot_statistics=pivot_statistics,
+            row_pivot=row_pivot,
+        )
 
     # Build the GT table
     tbl = GT(display_df)

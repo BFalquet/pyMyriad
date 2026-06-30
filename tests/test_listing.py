@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from pyMyriad import AnalysisTree, simple_table, cascade_table
+from pyMyriad import AnalysisTree, simple_table, cascade_table, gt_table
 from pyMyriad.listing import _clean_path_element, _split_path_into_levels
 
 
@@ -653,6 +653,134 @@ def test_simple_table_non_categorical_split_remains_alphabetical():
 
     result = simple_table(dtree, by="df.Group")
     assert list(result.columns) == ["Statistic", "Apple", "Mango", "Zebra"]
+
+
+def _lab_visit_arm_tree():
+    """Build a small Visit x Arm analysis tree with several named statistics.
+
+    Shared fixture for the row_pivot tests below (regression tests for #62).
+    """
+    df = pd.DataFrame(
+        {
+            "AVISIT": pd.Categorical(
+                ["Baseline"] * 6 + ["Week 4"] * 6,
+                categories=["Baseline", "Week 4"],
+                ordered=True,
+            ),
+            "ARM": (["Placebo"] * 3 + ["Active"] * 3) * 2,
+            "Val": np.arange(12.0),
+        }
+    )
+    atree = (
+        AnalysisTree()
+        .split_by("df.AVISIT", label="Visit")
+        .split_by("df.ARM", label="Arm")
+        .analyze_by(
+            n=lambda df: len(df),
+            mean=lambda df: round(np.mean(df.Val), 1),
+            sd=lambda df: round(np.std(df.Val, ddof=1), 1),
+            min=lambda df: round(np.min(df.Val), 1),
+            max=lambda df: round(np.max(df.Val), 1),
+        )
+    )
+    return atree.run(df)
+
+
+def test_row_pivot_requires_pivot_statistics():
+    """Regression test for #62: row_pivot without pivot_statistics=True is rejected."""
+    dtree = _lab_visit_arm_tree()
+    with pytest.raises(ValueError, match="pivot_statistics"):
+        simple_table(dtree, by="Arm", row_pivot={"n": ["n"]})
+
+
+def test_row_pivot_unknown_statistic_raises():
+    """Regression test for #62: a typo'd statistic name raises a clear error."""
+    dtree = _lab_visit_arm_tree()
+    with pytest.raises(KeyError, match="unknown statistic"):
+        simple_table(dtree, by="Arm", pivot_statistics=True, row_pivot={"n": ["nope"]})
+
+
+def test_row_pivot_list_stacks_statistics_as_rows():
+    """Regression test for #62: a subset of statistics stack as rows, by= stays columns.
+
+    Mirrors the real-world pattern in examples/lab_change_from_baseline_table_v3.py,
+    which previously required a hand-rolled pd.concat of per-statistic-group slices.
+    """
+    dtree = _lab_visit_arm_tree()
+
+    result = simple_table(
+        dtree,
+        by="Arm",
+        pivot_statistics=True,
+        row_pivot={"n": ["n"], "Min, Max": ["min", "max"]},
+    )
+
+    assert list(result.columns) == [
+        "_Level_0",
+        "_Level_1",
+        "Statistic",
+        "Active",
+        "Placebo",
+    ]
+    # Two visits * two row_pivot labels = 4 rows.
+    assert len(result) == 4
+    assert result["Statistic"].tolist() == ["n", "Min, Max", "n", "Min, Max"]
+    # A single statistic name passes its raw value through unchanged.
+    assert result.loc[result["Statistic"] == "n", "Active"].tolist() == [3, 3]
+    # Multiple statistic names are joined with ", ".
+    min_max_row = result.loc[result["Statistic"] == "Min, Max"].iloc[0]
+    assert min_max_row["Active"] == "3.0, 5.0"
+    assert min_max_row["Placebo"] == "0.0, 2.0"
+
+
+def test_row_pivot_callable_combines_statistics():
+    """Regression test for #62: a callable combiner gets statistics by parameter name."""
+    dtree = _lab_visit_arm_tree()
+
+    result = simple_table(
+        dtree,
+        by="Arm",
+        pivot_statistics=True,
+        row_pivot={"Mean (SD)": lambda mean, sd: f"{mean} ({sd})"},
+    )
+
+    assert result["Statistic"].tolist() == ["Mean (SD)", "Mean (SD)"]
+    assert " (" in result["Active"].iloc[0]
+
+
+def test_row_pivot_without_by_uses_single_value_column():
+    """Regression test for #62: row_pivot works without a by= pivot too."""
+    dtree = _lab_visit_arm_tree()
+
+    result = simple_table(
+        dtree, pivot_statistics=True, row_pivot={"n": ["n"], "Min, Max": ["min", "max"]}
+    )
+
+    assert "Value" in result.columns
+    assert "Active" not in result.columns
+
+
+def test_row_pivot_not_supported_with_cascade():
+    """Regression test for #62: row_pivot + cascade=True is explicitly rejected."""
+    dtree = _lab_visit_arm_tree()
+    with pytest.raises(ValueError, match="cascade"):
+        gt_table(
+            dtree, by="Arm", pivot_statistics=True, cascade=True, row_pivot={"n": ["n"]}
+        )
+
+
+def test_row_pivot_gt_table_builds_successfully():
+    """Regression test for #62: gt_table accepts row_pivot end-to-end."""
+    dtree = _lab_visit_arm_tree()
+    gt = gt_table(
+        dtree,
+        by="Arm",
+        pivot_statistics=True,
+        row_pivot={"n": ["n"], "Mean (SD)": lambda mean, sd: f"{mean} ({sd})"},
+        title="Test",
+    )
+    assert gt is not None
+    assert len(gt.as_raw_html()) > 0
 
 
 if __name__ == "__main__":
