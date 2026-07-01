@@ -460,4 +460,58 @@ def test_flatten_by_accepts_list_of_labels(simple_df):
     assert "A Level" in set(flat["pivot_split"].explode().dropna())
 
 
+def test_flatten_by_analysis_label_is_accepted_without_error(simple_df):
+    """Regression test for #70: 'Analysis' bypasses the split-label validation."""
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .analyze_by(n=lambda df: len(df), label="Raw")
+        .analyze_by(n=lambda df: len(df) * 10, label="Scaled")
+    )
+    result = tree.run(simple_df, environ=ENVIRON)
+    # Should not raise even though "Analysis" is not a SplitDataNode label.
+    flat = result.__flatten__(pivot="Analysis")
+    assert len(flat) > 0
+
+
+def test_flatten_by_analysis_routes_label_into_pivot_lvl(simple_df):
+    """Regression test for #70: DataNode.label lands in pivot_lvl, not path_pivot."""
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .analyze_by(n=lambda df: len(df), label="Raw")
+        .analyze_by(n=lambda df: len(df) * 10, label="Scaled")
+    )
+    result = tree.run(simple_df, environ=ENVIRON)
+    flat = result.__flatten__(pivot="Analysis")
+    analysis_rows = flat[flat["type"] == "analysis"]
+
+    # Each analysis row should have its own label in pivot_lvl (not path_pivot).
+    pivot_lvl_values = analysis_rows["pivot_lvl"].apply(tuple).tolist()
+    assert ("Raw",) in pivot_lvl_values
+    assert ("Scaled",) in pivot_lvl_values
+
+    # "analysis" marker should NOT appear in path_pivot when Analysis is pivoted.
+    for path in analysis_rows["path_pivot"]:
+        assert "analysis" not in path
+
+
+def test_flatten_by_analysis_combined_with_split_pivot(simple_df):
+    """Regression test for #70: 'Analysis' composes correctly with a real split pivot."""
+    tree = (
+        AnalysisTree()
+        .split_by("df.Gender", label="Gender")
+        .analyze_by(n=lambda df: len(df), label="Raw")
+        .analyze_by(n=lambda df: len(df) * 10, label="Scaled")
+    )
+    result = tree.run(simple_df, environ=ENVIRON)
+    flat = result.__flatten__(pivot=["Gender", "Analysis"])
+    analysis_rows = flat[flat["type"] == "analysis"]
+
+    # pivot_lvl should contain both the Gender level and the analysis label.
+    all_pivot_tuples = [tuple(p) for p in analysis_rows["pivot_lvl"]]
+    assert any("F" in t and "Raw" in t for t in all_pivot_tuples)
+    assert any("M" in t and "Scaled" in t for t in all_pivot_tuples)
+
+
 # endregion

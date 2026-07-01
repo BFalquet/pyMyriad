@@ -655,5 +655,108 @@ def test_simple_table_non_categorical_split_remains_alphabetical():
     assert list(result.columns) == ["Statistic", "Apple", "Mango", "Zebra"]
 
 
+def test_simple_table_by_analysis_produces_label_pivot_columns():
+    """Regression test for #70: by='Analysis' turns analyze_by() labels into columns."""
+    df = pd.DataFrame({"G": ["M", "M", "F", "F"], "V": [1.0, 2.0, 3.0, 4.0]})
+    atree = (
+        AnalysisTree()
+        .split_by("df.G", label="Group")
+        .analyze_by(n=lambda df: len(df), label="Raw")
+        .analyze_by(n=lambda df: len(df) * 10, label="Scaled")
+    )
+    dtree = atree.run(df)
+    result = simple_table(dtree, by="Analysis")
+
+    assert "Raw" in result.columns
+    assert "Scaled" in result.columns
+    assert "Statistic" in result.columns
+
+
+def test_simple_table_by_split_and_analysis_produces_composite_columns():
+    """Regression test for #70: by=['Split','Analysis'] gives '{Split} > {Label}' columns."""
+    df = pd.DataFrame({"G": ["M", "M", "F", "F"], "V": [1.0, 2.0, 3.0, 4.0]})
+    atree = (
+        AnalysisTree()
+        .split_by("df.G", label="Group")
+        .analyze_by(n=lambda df: len(df), label="Raw")
+        .analyze_by(n=lambda df: len(df) * 10, label="Scaled")
+    )
+    dtree = atree.run(df)
+    result = simple_table(dtree, by=["Group", "Analysis"])
+
+    assert "F > Raw" in result.columns
+    assert "F > Scaled" in result.columns
+    assert "M > Raw" in result.columns
+    assert "M > Scaled" in result.columns
+
+
+def test_simple_table_by_split_and_analysis_merges_label_rows():
+    """Regression test for #70: Raw and Scaled values appear on the same output row."""
+    df = pd.DataFrame({"G": ["M", "M", "F", "F"], "V": [1.0, 2.0, 3.0, 4.0]})
+    atree = (
+        AnalysisTree()
+        .split_by("df.G", label="Group")
+        .analyze_by(n=lambda df: len(df), label="Raw")
+        .analyze_by(n=lambda df: len(df) * 10, label="Scaled")
+    )
+    dtree = atree.run(df)
+    result = simple_table(dtree, by=["Group", "Analysis"])
+
+    n_row = result[result["Statistic"] == "n"]
+    assert len(n_row) == 1
+    assert n_row["F > Raw"].iloc[0] == 2
+    assert n_row["F > Scaled"].iloc[0] == 20
+    assert n_row["M > Raw"].iloc[0] == 2
+    assert n_row["M > Scaled"].iloc[0] == 20
+
+
+def test_simple_table_by_analysis_clinical_table_shape():
+    """Regression test for #70: full change-from-baseline table structure."""
+    df = pd.DataFrame(
+        {
+            "Visit": pd.Categorical(
+                ["Baseline", "Week 4"] * 6,
+                categories=["Baseline", "Week 4"],
+                ordered=True,
+            ),
+            "ARM": pd.Categorical(
+                (["A"] * 3 + ["B"] * 3) * 2, categories=["A", "B"], ordered=True
+            ),
+            "AVAL": np.arange(12.0),
+        }
+    )
+    df["CHG"] = df["AVAL"] - df.groupby("ARM", observed=True)["AVAL"].transform("first")
+
+    tree = (
+        AnalysisTree()
+        .split_by("df.Visit", label="Visit")
+        .split_by("df.ARM", label="Arm")
+        .analyze_by(
+            n=lambda df: len(df),
+            mean=lambda df: round(np.mean(df.AVAL), 1),
+            label="Value",
+        )
+        .analyze_by(
+            n=lambda df: len(df),
+            mean=lambda df: round(np.mean(df.CHG), 1),
+            label="Change",
+        )
+    )
+    result = tree.run(df)
+    table = simple_table(result, by=["Arm", "Analysis"])
+
+    assert list(table.columns) == [
+        "_Level_0",
+        "_Level_1",
+        "Statistic",
+        "A > Value",
+        "A > Change",
+        "B > Value",
+        "B > Change",
+    ]
+    # Each statistic on exactly one row per visit — no duplicate rows.
+    assert len(table) == 4  # 2 visits × 2 statistics
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

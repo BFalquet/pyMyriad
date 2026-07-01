@@ -236,14 +236,26 @@ def _create_table(
     df["path_pivot"] = _ordered_categorical(df["path_pivot"])
     df["pivot_lvl"] = _ordered_categorical(df["pivot_lvl"])
 
+    # When "Analysis" is pivoted into columns, the label column must be dropped
+    # from the pivot index so that rows with the same statistics but different
+    # analysis labels (e.g. "Result" vs "Change") are merged onto one row with
+    # their values landing in the corresponding pivot columns.
+    _by_seq = [by] if isinstance(by, str) else (list(by) if by else [])
+    _pivot_by_analysis = "Analysis" in _by_seq
+
     # Handle pivot columns if present
     pivot_columns = []
 
     if by != "" and pivot_statistics:
         # Pivot by both split variable and statistics
         # Use MultiIndex pivot to create hierarchical columns
+        _idx = (
+            ["depth", "path_pivot"]
+            if _pivot_by_analysis
+            else ["depth", "path_pivot", "label"]
+        )
         df = df.pivot_table(
-            index=["depth", "path_pivot", "label"],
+            index=_idx,
             columns=["pivot_lvl", "statistics"],
             values="values",
             aggfunc="first",
@@ -272,8 +284,13 @@ def _create_table(
     elif by != "":
         # Pivot only by split variable
         pivot_columns = df["pivot_lvl"].unique().tolist()
+        _idx = (
+            ["depth", "path_pivot", "statistics"]
+            if _pivot_by_analysis
+            else ["depth", "path_pivot", "label", "statistics"]
+        )
         df = df.pivot_table(
-            index=["depth", "path_pivot", "label", "statistics"],
+            index=_idx,
             columns="pivot_lvl",
             values="values",
             aggfunc="first",

@@ -101,6 +101,21 @@ Quick reference for the Jupyter notebook tutorials in `examples/notebooks/`. Eac
 
 ---
 
+### [08_row_pivot_clinical_table.ipynb](notebooks/08_row_pivot_clinical_table.ipynb)
+
+**Worked example: a clinical change-from-baseline table**
+
+- Two `.analyze_by(label=...)` calls to separate Value and Change metrics in one tree
+- `format_statistics()` to combine raw statistics into display strings (n, Mean (SD), etc.)
+- `by=["Arm", "Analysis"]` to pivot across both the Arm split and the analysis label simultaneously, producing `"{Arm} > {Label}"` columns in a single `simple_table()` call
+- Great Tables HTML output with Arm spanners
+
+**Key concepts**: `by="Analysis"`, multiple `analyze_by()` labels, `format_statistics()`, `simple_table()`
+
+**When to reference**: Clinical descriptive-statistics tables, change-from-baseline layouts, pivoting across analysis labels
+
+---
+
 ## Quick Code Snippets by Task
 
 ### Basic Analysis
