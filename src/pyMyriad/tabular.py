@@ -33,6 +33,8 @@ See also:
     - listing.py: User-facing table generation functions
 """
 
+import warnings
+
 from .data_tree import DataNode, SplitDataNode, DataTree
 import pandas as pd
 
@@ -342,3 +344,89 @@ def format_statistics(
         _apply_format_to_node(node)
 
     return dtree
+
+
+def change_from_baseline(
+    df: pd.DataFrame,
+    *,
+    id_col: str,
+    value_col: str,
+    baseline_level: str,
+    level_col: str,
+    result_col: str = "CHG",
+    warn_unmatched: bool = False,
+) -> pd.DataFrame:
+    """Add a per-subject paired change-from-baseline column to a DataFrame.
+
+    Computes the difference between each subject's value at every time-point
+    and that same subject's value at the designated baseline level.  The
+    result is a *paired* subtraction keyed on ``id_col`` — the statistically
+    correct treatment for within-subject change in clinical trial data (unlike
+    group-level ``mean(visit) - mean(baseline)``, which is only equivalent
+    when there are no dropouts).
+
+    Subjects who appear at a non-baseline visit but have no matching baseline
+    row receive ``NaN`` in ``result_col``.  The DataFrame is never shrunk;
+    callers can exclude unmatched rows in their ``analyze_by`` lambdas with
+    ``df[result_col].dropna()``.
+
+    Args:
+        df: Input DataFrame, one row per subject per time-point.
+        id_col: Column that identifies subjects (e.g. ``"USUBJID"``).
+        value_col: Column whose values to compute change for (e.g. ``"AVAL"``).
+        baseline_level: Value of ``level_col`` that marks baseline rows
+            (e.g. ``"Baseline"``).
+        level_col: Column that identifies time-points or visit levels
+            (e.g. ``"AVISIT"``).
+        result_col: Name of the new column in the returned DataFrame.
+            Defaults to ``"CHG"``.
+        warn_unmatched: If ``True``, emit a ``UserWarning`` listing how many
+            subjects in non-baseline rows have no matching baseline entry.
+            Defaults to ``False``.
+
+    Returns:
+        A copy of ``df`` with ``result_col`` added.
+
+    Examples:
+        >>> df = change_from_baseline(
+        ...     df,
+        ...     id_col="USUBJID",
+        ...     value_col="AVAL",
+        ...     baseline_level="Baseline",
+        ...     level_col="AVISIT",
+        ... )
+        >>> # df.CHG is now available in every analyze_by lambda
+        >>> tree = (
+        ...     AnalysisTree()
+        ...     .split_by("df.AVISIT", label="Visit")
+        ...     .split_by("df.ARM", label="Arm")
+        ...     .analyze_by(
+        ...         n=lambda df: df.CHG.notna().sum(),
+        ...         mean_chg=lambda df: df.CHG.mean(),
+        ...     )
+        ... )
+    """
+    baseline_lookup = df.loc[df[level_col] == baseline_level].set_index(id_col)[
+        value_col
+    ]
+
+    out = df.copy()
+    out[result_col] = df[value_col] - df[id_col].map(baseline_lookup)
+
+    if warn_unmatched:
+        non_baseline = df[df[level_col] != baseline_level]
+        n_unmatched = non_baseline[id_col].map(baseline_lookup).isna().sum()
+        if n_unmatched > 0:
+            n_subjects = non_baseline[id_col][
+                non_baseline[id_col].map(baseline_lookup).isna()
+            ].nunique()
+            warnings.warn(
+                f"change_from_baseline: {n_subjects} subject(s) "
+                f"({n_unmatched} row(s)) in non-baseline visits have no "
+                f"matching baseline entry in '{level_col}' == '{baseline_level}'. "
+                f"Their '{result_col}' values are NaN.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    return out
