@@ -655,6 +655,68 @@ def test_simple_table_non_categorical_split_remains_alphabetical():
     assert list(result.columns) == ["Statistic", "Apple", "Mango", "Zebra"]
 
 
+def test_simple_table_statistic_rows_follow_analyze_by_order():
+    """Regression test for #72: Statistic rows preserve analyze_by() kwarg order."""
+    df = pd.DataFrame({"G": ["A", "B"], "V": [1.0, 2.0]})
+    atree = (
+        AnalysisTree()
+        .split_by("df.G", label="Group")
+        .analyze_by(zzz_last=lambda df: 0, aaa_first=lambda df: 1, mmm_mid=lambda df: 2)
+    )
+    dtree = atree.run(df)
+
+    result = simple_table(dtree, by="Group")
+    assert result["Statistic"].tolist() == ["zzz_last", "aaa_first", "mmm_mid"]
+
+
+def test_simple_table_pivot_statistics_columns_follow_analyze_by_order():
+    """Regression test for #72: with pivot_statistics=True stats stay in kwarg order."""
+    df = pd.DataFrame({"G": ["A", "B"], "V": [1.0, 2.0]})
+    atree = (
+        AnalysisTree()
+        .split_by("df.G", label="Group")
+        .analyze_by(zzz_last=lambda df: 0, aaa_first=lambda df: 1, mmm_mid=lambda df: 2)
+    )
+    dtree = atree.run(df)
+
+    result = simple_table(dtree, by="Group", pivot_statistics=True)
+    # Statistic order within each group should follow analyze_by kwarg order.
+    assert list(result.columns) == [
+        "A||zzz_last",
+        "A||aaa_first",
+        "A||mmm_mid",
+        "B||zzz_last",
+        "B||aaa_first",
+        "B||mmm_mid",
+    ]
+
+
+def test_simple_table_statistic_rows_follow_format_statistics_order():
+    """Regression test for #72: format_statistics kwarg order is respected in the table."""
+    df = pd.DataFrame({"G": ["A", "A", "B", "B"], "V": [1.0, 2.0, 3.0, 4.0]})
+    atree = (
+        AnalysisTree()
+        .split_by("df.G", label="Group")
+        .analyze_by(
+            n=lambda df: len(df),
+            mean=lambda df: np.mean(df.V),
+            sd=lambda df: np.std(df.V, ddof=1),
+        )
+    )
+    dtree = atree.run(df)
+    from pyMyriad import format_statistics
+
+    formatted = format_statistics(
+        dtree,
+        n="[{n}]",
+        mean_sd="{mean:.1f} ({sd:.2f})",
+        remove_original=True,
+    )
+
+    result = simple_table(formatted, by="Group")
+    assert result["Statistic"].tolist() == ["n", "mean_sd"]
+
+
 def test_simple_table_by_analysis_produces_label_pivot_columns():
     """Regression test for #70: by='Analysis' turns analyze_by() labels into columns."""
     df = pd.DataFrame({"G": ["M", "M", "F", "F"], "V": [1.0, 2.0, 3.0, 4.0]})

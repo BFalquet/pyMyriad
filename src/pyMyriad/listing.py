@@ -232,9 +232,12 @@ def _create_table(
 
     # Preserve the originating split's row order (categorical dtype order, or
     # kwarg order for multi-expression splits) instead of letting pivot_table
-    # re-sort rows/columns alphabetically.
+    # re-sort rows/columns alphabetically.  The same treatment is applied to
+    # the statistics dimension so that analyze_by() / format_statistics() kwarg
+    # order is respected in the final table rather than sorted alphabetically.
     df["path_pivot"] = _ordered_categorical(df["path_pivot"])
     df["pivot_lvl"] = _ordered_categorical(df["pivot_lvl"])
+    df["statistics"] = _ordered_categorical(df["statistics"])
 
     # When "Analysis" is pivoted into columns, the label column must be dropped
     # from the pivot index so that rows with the same statistics but different
