@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `by="Analysis"` pivot support: passing `"Analysis"` (alone or combined with a real split label) as the `by=` argument to `simple_table()` / `gt_table()` / `cascade_table()` now pivots across the `analyze_by(label=...)` dimension, turning different analysis labels into side-by-side columns (#70). This enables the classic clinical change-from-baseline table in one natural chain — two `analyze_by()` calls (one for values, one for changes), `format_statistics()` to combine/format, and `simple_table(by=["Arm", "Analysis"])` to produce `{Arm} > {Label}` columns — with no data reshape, no second tree, and no extra library parameters. Two targeted additions to `DataNode.__flatten__` and `DataTree.__flatten__` in `data_tree.py`; `listing.py` drops `label` from the pivot index when `"Analysis"` is in `by`.
 - **JSON serialization / deserialization** for `AnalysisTree`, enabling interoperability with AI agents and external systems:
   - `AnalysisTree.to_dict()` — serialize the full tree structure to a plain Python `dict`
   - `AnalysisTree.to_json(path=None, indent=2)` — serialize to a JSON string; optionally write to a file

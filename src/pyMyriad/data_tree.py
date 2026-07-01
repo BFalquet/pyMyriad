@@ -231,7 +231,13 @@ class DataNode:
         data: bool = False,
     ) -> pd.DataFrame:
         path = path + ("analysis",)
-        path_pivot = path_pivot + ("analysis",)
+
+        if "Analysis" in pivot_var:
+            # Treat the analysis label as a virtual pivot level, mirroring the
+            # logic LvlDataNode uses when its split label is in pivot_var.
+            pivot_lvl = pivot_lvl + (self.label,)
+        else:
+            path_pivot = path_pivot + ("analysis",)
 
         return pd.DataFrame(
             {
@@ -656,7 +662,14 @@ class DataTree(dict):
             known_labels = set()
             for child in self.values():
                 known_labels.update(_collect_split_labels(child))
-            unknown = [label for label in pivot_var if label not in known_labels]
+            # "Analysis" is a virtual pivot dimension (the DataNode label set by
+            # analyze_by(label=...)) — it is not a SplitDataNode label, so it
+            # must bypass the split-label validation.
+            unknown = [
+                label
+                for label in pivot_var
+                if label not in known_labels and label != "Analysis"
+            ]
             if unknown:
                 raise ValueError(
                     f"by/pivot label(s) {unknown} do not match any split in the tree. "
