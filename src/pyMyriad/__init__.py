@@ -27,6 +27,9 @@ pyMyriad — hierarchical analysis tree framework for stratified data analysis.
 **Data preparation**
   change_from_baseline   Add a per-subject change-from-baseline column to a DataFrame.
 
+**Clinical tables**
+  lab_summary_table      Canonical clinical-trial lab table (Visit x Statistic rows, Arm x Value/Change columns).
+
 Typical workflow::
 
     import pandas as pd, numpy as np
@@ -47,6 +50,7 @@ from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
 from .plots import forest_plot, distribution_plot
 from .listing import gt_table, simple_table, cascade_table
 from .tabular import format_statistics, change_from_baseline
+from .clinical import lab_summary_table
 
 __all__ = [
     "AnalysisTree",
@@ -63,4 +67,5 @@ __all__ = [
     "cascade_table",
     "format_statistics",
     "change_from_baseline",
+    "lab_summary_table",
 ]
