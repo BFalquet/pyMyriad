@@ -221,15 +221,35 @@ def test_missing_baseline_level_raises(lab_df):
         _call(lab_df, baseline_level="Nonexistent")
 
 
-def test_change_col_collision_raises(lab_df):
-    """Regression test for #65: an existing change_col column is never silently overwritten."""
-    lab_df["_LAB_SUMMARY_CHG"] = 0
-    with pytest.raises(KeyError):
-        _call(lab_df)
+def test_existing_change_col_is_used(lab_df):
+    """Regression test for #65: a pre-existing change_col is used as-is, not recomputed."""
+    # A constant 5.0 — deliberately not the paired change change_from_baseline
+    # would compute — proves the supplied column is used verbatim. subject_col /
+    # baseline_level are not required when change_col already exists.
+    lab_df["CHG"] = 5.0
+    table = lab_summary_table(
+        lab_df,
+        value_col="AVAL",
+        visit_col="AVISIT",
+        arm_col="ARM",
+    )
+    row = table[(table.Visit == "Baseline") & (table.Statistic == "Mean (SD)")].iloc[0]
+    assert row["Placebo||Change"] == "5.0 (0.0)"
+
+
+def test_missing_change_col_requires_subject_and_baseline(lab_df):
+    """Regression test for #65: computing change_col needs subject_col and baseline_level."""
+    with pytest.raises(ValueError):
+        lab_summary_table(
+            lab_df,
+            value_col="AVAL",
+            visit_col="AVISIT",
+            arm_col="ARM",
+        )
 
 
 def test_custom_change_col_name(lab_df):
-    """A custom change_col is threaded through and produces the same result."""
+    """A custom change_col that must be computed is threaded through correctly."""
     table = _call(lab_df, change_col="MY_CHG")
     row = table[(table.Visit == "Baseline") & (table.Statistic == "Mean (SD)")].iloc[0]
     assert row["Placebo||Change"] == "0.0 (0.0)"
@@ -324,4 +344,4 @@ def test_as_gt_title_subtitle(lab_df):
 def test_result_col_not_leaked_into_output(lab_df):
     """The internal change_col is never a literal column name in the returned table."""
     table = _call(lab_df)
-    assert "_LAB_SUMMARY_CHG" not in table.columns
+    assert "CHG" not in table.columns

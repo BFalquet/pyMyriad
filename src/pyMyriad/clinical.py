@@ -71,10 +71,10 @@ def lab_summary_table(
     value_col: str,
     visit_col: str,
     arm_col: str,
-    subject_col: str,
-    baseline_level: str,
+    subject_col: Optional[str] = None,
+    baseline_level: Optional[str] = None,
     stats: tuple[str, ...] = ("n", "mean_sd", "median_iqr", "min_max"),
-    change_col: str = "_LAB_SUMMARY_CHG",
+    change_col: str = "CHG",
     as_gt: bool = False,
     title: Optional[str] = None,
     subtitle: Optional[str] = None,
@@ -87,13 +87,17 @@ def lab_summary_table(
     Arm, each sub-divided into the observed ``Value`` and the per-subject
     paired ``Change from Baseline``.
 
-    Internally this wraps ``change_from_baseline()`` to compute paired
-    change, then an ``AnalysisTree`` split by visit and arm with two
-    ``analyze_by(label=...)`` calls — one for the observed value, one for
-    the change — computing each requested statistic as a pre-formatted
-    string. ``simple_table(..., by=["Arm", "Analysis"], pivot_statistics=False)``
-    then pivots both the Arm split and the Value/Change metric into columns
-    in a single call, leaving the statistics as rows.
+    Change from baseline can either be supplied or computed: if ``df``
+    already contains a ``change_col`` column it is used as-is (assumed
+    pre-computed by the caller); otherwise it is computed with
+    ``change_from_baseline()``, which requires ``subject_col`` and
+    ``baseline_level``. The function then builds an ``AnalysisTree`` split
+    by visit and arm with two ``analyze_by(label=...)`` calls — one for the
+    observed value, one for the change — computing each requested statistic
+    as a pre-formatted string. ``simple_table(..., by=["Arm", "Analysis"],
+    pivot_statistics=False)`` then pivots both the Arm split and the
+    Value/Change metric into columns in a single call, leaving the
+    statistics as rows.
 
     Visit and Arm row/column ordering follows the categorical dtype order
     of ``visit_col``/``arm_col`` when present; otherwise order of first
@@ -111,15 +115,19 @@ def lab_summary_table(
             For guaranteed arm ordering, pass a ``pd.Categorical`` column.
         subject_col: Column identifying subjects (e.g. ``"USUBJID"``), used
             to pair each visit's value with that subject's baseline value.
+            Only required when ``change_col`` must be computed (i.e. it is
+            not already a column in ``df``).
         baseline_level: Value of ``visit_col`` that marks the baseline visit
             (e.g. ``"Baseline"``). Must be present in ``df[visit_col]``.
+            Only required when ``change_col`` must be computed.
         stats: Which descriptive-statistic rows to include, and in what
             order. Must be a non-empty subset of ``("n", "mean_sd",
             "median_iqr", "min_max")``. Defaults to all four.
-        change_col: Name of the intermediate change-from-baseline column
-            computed internally via ``change_from_baseline()``. Defaults to
-            a name unlikely to clash (``"_LAB_SUMMARY_CHG"``); raises if it
-            already exists in ``df``.
+        change_col: Name of the change-from-baseline column. If ``df``
+            already has this column it is used as-is (assumed pre-computed);
+            otherwise it is computed via ``change_from_baseline()`` (which
+            needs ``subject_col`` and ``baseline_level``). Defaults to the
+            CDISC-standard ``"CHG"``.
         as_gt: If True, return a ``great_tables.GT`` object with Arm
             spanners over Value/Change sub-columns and the Visit label
             suppressed on repeated rows, instead of a plain DataFrame.
@@ -137,10 +145,11 @@ def lab_summary_table(
         table, with an Arm spanner over each arm's Value/Change columns.
 
     Raises:
-        ValueError: If ``stats`` is empty, contains a name not in
-            ``("n", "mean_sd", "median_iqr", "min_max")``, or if
-            ``baseline_level`` is not present in ``df[visit_col]``.
-        KeyError: If ``change_col`` already exists as a column in ``df``.
+        ValueError: If ``stats`` is empty or contains a name not in
+            ``("n", "mean_sd", "median_iqr", "min_max")``; if ``change_col``
+            must be computed but ``subject_col`` or ``baseline_level`` is
+            missing; or if ``baseline_level`` is not present in
+            ``df[visit_col]``.
 
     Examples:
         >>> table = lab_summary_table(
@@ -172,23 +181,32 @@ def lab_summary_table(
             f"Valid options are: {sorted(_STAT_FORMATTERS)}."
         )
     if change_col in df.columns:
-        raise KeyError(
-            f"change_col={change_col!r} already exists as a column in `df`; "
-            "pass a different change_col to avoid overwriting it."
+        print(
+            f"lab_summary_table: using existing {change_col!r} column as the "
+            "change from baseline (assumed pre-computed)."
         )
-    if baseline_level not in df[visit_col].unique():
-        raise ValueError(
-            f"baseline_level={baseline_level!r} not found in df[{visit_col!r}]."
+    else:
+        if subject_col is None or baseline_level is None:
+            raise ValueError(
+                f"{change_col!r} is not a column in `df`, so it must be computed: "
+                "`subject_col` and `baseline_level` are required in that case."
+            )
+        if baseline_level not in df[visit_col].unique():
+            raise ValueError(
+                f"baseline_level={baseline_level!r} not found in df[{visit_col!r}]."
+            )
+        print(
+            f"lab_summary_table: computing change from baseline into "
+            f"{change_col!r} via change_from_baseline()."
         )
-
-    df = change_from_baseline(
-        df,
-        id_col=subject_col,
-        value_col=value_col,
-        baseline_level=baseline_level,
-        level_col=visit_col,
-        result_col=change_col,
-    )
+        df = change_from_baseline(
+            df,
+            id_col=subject_col,
+            value_col=value_col,
+            baseline_level=baseline_level,
+            level_col=visit_col,
+            result_col=change_col,
+        )
 
     # One analyze_by() per metric: same formatted statistics, computed on the
     # observed value vs. the change column. The label= tags which metric each
