@@ -22,7 +22,10 @@ pyMyriad — hierarchical analysis tree framework for stratified data analysis.
   distribution_plot  Distribution / scatter plot of raw data.
 
 **Formatting**
-  format_statistics  Apply format strings to combine statistics in a DataTree.
+  format_statistics      Apply format strings to combine statistics in a DataTree.
+
+**Data preparation**
+  change_from_baseline   Add a per-subject change-from-baseline column to a DataFrame.
 
 Typical workflow::
 
@@ -43,7 +46,7 @@ from .analysis_tree import AnalysisTree, SplitNode, AnalysisNode
 from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
 from .plots import forest_plot, distribution_plot
 from .listing import gt_table, simple_table, cascade_table
-from .tabular import format_statistics
+from .tabular import format_statistics, change_from_baseline
 
 __all__ = [
     "AnalysisTree",
@@ -59,4 +62,5 @@ __all__ = [
     "simple_table",
     "cascade_table",
     "format_statistics",
+    "change_from_baseline",
 ]
