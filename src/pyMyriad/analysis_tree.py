@@ -28,9 +28,11 @@ See also:
     - data_tree.py: Result data structures
 """
 
+import functools
 import json
 import os
 import warnings
+import numpy as np
 import pandas as pd
 from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
 from .utils import (
@@ -41,6 +43,199 @@ from .utils import (
     scope_cross_eval,
     _callable_to_expr_str,
 )
+
+# region Simple analysis functions
+
+# Predefined functions for multi_simple_analysis(). Continuous functions take
+# a pandas Series (the variable's values in the current group) and return a
+# raw number or a pre-formatted string. Categorical functions take either the
+# current group's DataFrame (`df`) or the denominator count list (`_N`, which
+# requires `denom` to be set on the AnalysisTree) — dispatched the same way
+# analyze_by() dispatches callables by parameter name.
+
+
+def _simple_n(x: pd.Series):
+    return x.notna().sum()
+
+
+def _simple_mean(x: pd.Series):
+    x = x.dropna()
+    return x.mean() if len(x) else float("nan")
+
+
+def _simple_sd(x: pd.Series):
+    x = x.dropna()
+    return x.std(ddof=1) if len(x) > 1 else float("nan")
+
+
+def _simple_median(x: pd.Series):
+    x = x.dropna()
+    return x.median() if len(x) else float("nan")
+
+
+def _simple_q1(x: pd.Series):
+    x = x.dropna()
+    return x.quantile(0.25) if len(x) else float("nan")
+
+
+def _simple_q3(x: pd.Series):
+    x = x.dropna()
+    return x.quantile(0.75) if len(x) else float("nan")
+
+
+def _simple_min(x: pd.Series):
+    x = x.dropna()
+    return x.min() if len(x) else float("nan")
+
+
+def _simple_max(x: pd.Series):
+    x = x.dropna()
+    return x.max() if len(x) else float("nan")
+
+
+def _simple_mean_sd(x: pd.Series) -> str:
+    x = x.dropna()
+    if len(x) == 0:
+        return "NA"
+    if len(x) == 1:
+        return f"{x.iloc[0]:.1f} (NA)"
+    return f"{np.mean(x):.1f} ({np.std(x, ddof=1):.1f})"
+
+
+def _simple_median_iqr(x: pd.Series) -> str:
+    x = x.dropna()
+    if len(x) == 0:
+        return "NA"
+    q1, med, q3 = np.percentile(x, [25, 50, 75])
+    return f"{med:.1f} ({q1:.1f}, {q3:.1f})"
+
+
+def _simple_min_max(x: pd.Series) -> str:
+    x = x.dropna()
+    if len(x) == 0:
+        return "NA"
+    return f"{np.min(x):.1f}, {np.max(x):.1f}"
+
+
+CONTINUOUS_SIMPLE_FUNCTIONS = {
+    "n": _simple_n,
+    "mean": _simple_mean,
+    "sd": _simple_sd,
+    "median": _simple_median,
+    "q1": _simple_q1,
+    "q3": _simple_q3,
+    "min": _simple_min,
+    "max": _simple_max,
+    "mean_sd": _simple_mean_sd,
+    "median_iqr": _simple_median_iqr,
+    "min_max": _simple_min_max,
+}
+"""Predefined continuous-variable functions for ``multi_simple_analysis()``.
+
+Each function takes a ``pd.Series`` (the variable's values within the
+current group) and returns either a raw number (``n``, ``mean``, ``sd``,
+``median``, ``q1``, ``q3``, ``min``, ``max``) or a pre-formatted display
+string (``mean_sd``, ``median_iqr``, ``min_max``).
+"""
+
+
+def _simple_cat_n(df: pd.DataFrame):
+    return len(df)
+
+
+def _simple_cat_n_pct(_N: list):
+    n, denom = _N[-1], _N[-2]
+    pct = 100 * n / denom if denom else float("nan")
+    return f"{n} ({pct:.0f}%)"
+
+
+def _simple_cat_pct(_N: list):
+    n, denom = _N[-1], _N[-2]
+    return 100 * n / denom if denom else float("nan")
+
+
+CATEGORICAL_SIMPLE_FUNCTIONS = {
+    "n": _simple_cat_n,
+    "n (pct)": _simple_cat_n_pct,
+    "pct": _simple_cat_pct,
+}
+"""Predefined categorical-variable functions for ``multi_simple_analysis()``.
+
+``n`` is a plain row count within the current category level (no ``denom``
+required). ``n (pct)``/``pct`` need ``_N`` — the denominator is the count
+one level up (the split enclosing the per-level split, e.g. treatment Arm),
+which requires ``denom`` to be set on the ``AnalysisTree``.
+"""
+
+
+def _apply_continuous_fn(fn, col: str, df: pd.DataFrame):
+    return fn(df[col])
+
+
+def _validate_multi_simple_analysis(var: dict, continuous_fun, categorical_fun) -> None:
+    """Validate ``multi_simple_analysis()`` arguments; raises ``ValueError`` on failure."""
+    if not var:
+        raise ValueError("`var` must be a non-empty dict.")
+    unknown_types = {v for v in var.values() if v not in ("continuous", "categorical")}
+    if unknown_types:
+        raise ValueError(
+            f"Unknown variable type(s) {sorted(unknown_types)} in `var`. "
+            'Each value must be "continuous" or "categorical".'
+        )
+    if "continuous" in var.values() and not continuous_fun:
+        raise ValueError("`continuous_fun` must be a non-empty list.")
+    if "categorical" in var.values() and not categorical_fun:
+        raise ValueError("`categorical_fun` must be a non-empty list.")
+    unknown_cont = set(continuous_fun) - set(CONTINUOUS_SIMPLE_FUNCTIONS)
+    if unknown_cont:
+        raise ValueError(
+            f"Unknown continuous_fun name(s) {sorted(unknown_cont)}. "
+            f"Valid options are: {sorted(CONTINUOUS_SIMPLE_FUNCTIONS)}."
+        )
+    unknown_cat = set(categorical_fun) - set(CATEGORICAL_SIMPLE_FUNCTIONS)
+    if unknown_cat:
+        raise ValueError(
+            f"Unknown categorical_fun name(s) {sorted(unknown_cat)}. "
+            f"Valid options are: {sorted(CATEGORICAL_SIMPLE_FUNCTIONS)}."
+        )
+
+
+def _build_multi_simple_analysis_nodes(
+    var: dict, continuous_fun, categorical_fun
+) -> list:
+    """Build one sibling node per variable for ``multi_simple_analysis()``.
+
+    Continuous variables become a single ``AnalysisNode`` labeled with the
+    variable name. Categorical variables become a ``SplitNode`` (one child
+    per observed category level) labeled with the variable name, wrapping
+    an ``AnalysisNode``.
+
+    Assumes ``_validate_multi_simple_analysis()`` has already been called.
+
+    Returns:
+        list[AnalysisNode | SplitNode]: One node per entry in ``var``.
+    """
+    nodes = []
+    for name, vtype in var.items():
+        if vtype == "continuous":
+            kwargs = {
+                fn: functools.partial(
+                    _apply_continuous_fn, CONTINUOUS_SIMPLE_FUNCTIONS[fn], name
+                )
+                for fn in continuous_fun
+            }
+            nodes.append(AnalysisNode(**kwargs, label=name))
+        else:
+            kwargs = {fn: CATEGORICAL_SIMPLE_FUNCTIONS[fn] for fn in categorical_fun}
+            nodes.append(
+                SplitNode(
+                    AnalysisNode(**kwargs, label=name), expr=f"df.{name}", label=name
+                )
+            )
+    return nodes
+
+
+# endregion
 
 # region AnalysisTree
 
@@ -627,6 +822,101 @@ class AnalysisTree(list):
 
         return self
 
+    def multi_simple_analysis(
+        self,
+        var: dict[str, str],
+        continuous_fun: list[str] = ("n", "mean_sd", "median_iqr", "min_max"),
+        categorical_fun: list[str] = ("n (pct)",),
+    ):
+        """Add one analysis branch per variable, dispatched by declared type.
+
+        For each ``name: type`` entry in ``var``, adds a new sibling node at
+        the extremities of the branches (in parallel with any other node
+        already there, and with each other) so the tree itself reflects one
+        branch per variable:
+
+        - ``"continuous"`` variables get a single ``AnalysisNode`` labeled
+          with the variable name, computing each function in
+          ``continuous_fun`` on that variable's values.
+        - ``"categorical"`` variables get a ``SplitNode`` labeled with the
+          variable name (one child per observed category level), wrapping
+          an ``AnalysisNode`` that computes each function in
+          ``categorical_fun``.
+
+        This is a convenience wrapper around ``analyze_by()``/``split_by()``
+        for the common case of summarizing several variables of mixed type
+        at the same point in the tree — a plain ``analyze_by()`` cannot
+        vary the number of result rows per variable (categorical variables
+        need one row per observed level), and once a terminal
+        ``analyze_by()`` node exists at a branch, ``split_by()`` can no
+        longer add a sibling split there, so building this by hand requires
+        directly constructing and appending nodes exactly as this method
+        does.
+
+        See ``CONTINUOUS_SIMPLE_FUNCTIONS``/``CATEGORICAL_SIMPLE_FUNCTIONS``
+        for the full list of predefined function names.
+
+        Args:
+            var: Ordered mapping of variable (column) name to declared type,
+                e.g. ``{"AGE": "continuous", "SEX": "categorical"}``. Must
+                be non-empty; each type must be ``"continuous"`` or
+                ``"categorical"``.
+            continuous_fun: Names of predefined functions to apply to each
+                continuous variable's values. Must be a subset of
+                ``CONTINUOUS_SIMPLE_FUNCTIONS``.
+            categorical_fun: Names of predefined functions to apply to each
+                categorical variable's per-level group. Must be a subset of
+                ``CATEGORICAL_SIMPLE_FUNCTIONS``. ``"n (pct)"``/``"pct"``
+                require ``denom`` to be set on the tree.
+
+        Returns:
+            AnalysisTree: The modified AnalysisTree with the new nodes added.
+
+        Raises:
+            ValueError: If ``var`` is empty; if any declared type is not
+                ``"continuous"``/``"categorical"``; if ``continuous_fun``/
+                ``categorical_fun`` contains an unrecognized name; or if
+                ``categorical_fun`` needs ``_N`` but ``denom`` is not set.
+
+        Examples:
+            >>> tree = (
+            ...     AnalysisTree(denom="USUBJID")
+            ...     .split_by("df.ARM", label="Arm")
+            ...     .multi_simple_analysis(
+            ...         var={"AGE": "continuous", "SEX": "categorical"},
+            ...         continuous_fun=["n", "mean"],
+            ...         categorical_fun=["n", "n (pct)"],
+            ...     )
+            ... )
+            >>> result = tree.run(df)
+        """
+        _validate_multi_simple_analysis(var, continuous_fun, categorical_fun)
+        needs_denom = "categorical" in var.values() and (
+            set(categorical_fun) & {"n (pct)", "pct"}
+        )
+        if needs_denom and self.denom is None:
+            raise ValueError(
+                f"categorical_fun {sorted(needs_denom)} requires `_N`, which "
+                "requires `denom` to be set on the AnalysisTree, e.g. "
+                'AnalysisTree(denom="USUBJID").'
+            )
+
+        is_split_node = [isinstance(x, SplitNode) for x in self]
+        if (len(is_split_node) == 0) or (not any(is_split_node)):
+            self.extend(
+                _build_multi_simple_analysis_nodes(var, continuous_fun, categorical_fun)
+            )
+        else:
+            for i in range(len(self)):
+                if isinstance(self[i], SplitNode):
+                    self[i] = self[i].multi_simple_analysis(
+                        var=var,
+                        continuous_fun=continuous_fun,
+                        categorical_fun=categorical_fun,
+                    )
+
+        return self
+
 
 # endregion
 
@@ -1144,6 +1434,46 @@ class SplitNode(list):
                         ref_lvl=ref_lvl,
                         termination=termination,
                         **kwargs,
+                    )
+
+        return self
+
+    def multi_simple_analysis(
+        self,
+        var: dict[str, str],
+        continuous_fun: list[str] = ("n", "mean_sd", "median_iqr", "min_max"),
+        categorical_fun: list[str] = ("n (pct)",),
+    ):
+        """Add one analysis branch per variable, dispatched by declared type.
+
+        See :meth:`AnalysisTree.multi_simple_analysis` for the full
+        description — this is the same method, usable when building a
+        sub-tree from a bare ``SplitNode`` directly.
+
+        Note:
+            Unlike :meth:`AnalysisTree.multi_simple_analysis`, this method
+            cannot verify that ``denom`` is set (a bare ``SplitNode`` has no
+            reference to the tree's ``denom`` setting), so a missing
+            ``denom`` for ``"n (pct)"``/``"pct"`` only surfaces as an error
+            when the tree is run.
+
+        Returns:
+            SplitNode: The modified SplitNode with the new nodes added.
+        """
+        _validate_multi_simple_analysis(var, continuous_fun, categorical_fun)
+
+        is_split_node = [isinstance(x, SplitNode) for x in self]
+        if (len(is_split_node) == 0) or (not any(is_split_node)):
+            self.extend(
+                _build_multi_simple_analysis_nodes(var, continuous_fun, categorical_fun)
+            )
+        else:
+            for i in range(len(self)):
+                if isinstance(self[i], SplitNode):
+                    self[i] = self[i].multi_simple_analysis(
+                        var=var,
+                        continuous_fun=continuous_fun,
+                        categorical_fun=categorical_fun,
                     )
 
         return self
