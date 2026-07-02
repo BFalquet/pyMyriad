@@ -289,6 +289,7 @@ def summary_table(
     *,
     variables: dict[str, str],
     arm_col: str,
+    subject_col: str,
     by: Optional[str] = None,
     stats: tuple[str, ...] = ("n", "mean_sd", "median_iqr", "min_max"),
     as_gt: bool = False,
@@ -304,8 +305,10 @@ def summary_table(
     Max``, reusing the same formatters as ``lab_summary_table()``).
     Categorical variables (e.g. ``SEX``) get one row per observed category
     level, formatted as ``"n (pct%)"``, where the percentage denominator is
-    that level's Arm total (and, if ``by`` is given, Arm-within-``by``
-    total) — not the level's own count.
+    the count of unique ``subject_col`` values in that level's Arm total
+    (and, if ``by`` is given, Arm-within-``by`` total) — not the level's own
+    count. Using unique-subject counts (rather than raw row counts) keeps
+    percentages correct even if ``df`` has more than one row per subject.
 
     ``variables`` declares each column's type explicitly; this function
     never infers type from dtype, since e.g. an integer-coded categorical
@@ -316,7 +319,11 @@ def summary_table(
     one small tree + ``simple_table(..., by=arm_col, pivot_statistics=False)``
     block is built per variable, then all blocks are vertically concatenated
     in ``variables`` dict order — the same "build small table, then combine"
-    shape ``lab_summary_table()`` uses internally for its Visit rows.
+    shape ``lab_summary_table()`` uses internally for its Visit rows. The
+    categorical block's percentage denominator reuses ``AnalysisTree``'s
+    existing ``denom=``/``_N`` mechanism (``denom=subject_col``), the same
+    primitive used elsewhere in the library for proportion/rate statistics,
+    rather than a bespoke lookup.
 
     ``by``/``arm_col`` row/column ordering follows the categorical dtype
     order when present; otherwise order of first appearance in ``df`` is
@@ -332,6 +339,10 @@ def summary_table(
         arm_col: Column identifying the treatment arm (e.g. ``"ARM"``). For
             guaranteed arm column ordering, pass a ``pd.Categorical``
             column.
+        subject_col: Column identifying subjects (e.g. ``"USUBJID"``), used
+            to count unique subjects for categorical variables' percentage
+            denominators via ``AnalysisTree(denom=subject_col)``. Not used
+            for continuous variables' statistics.
         by: Optional column to stratify rows by (e.g. ``"SEX"`` to produce a
             separate block of variable rows per sex), rendered as a bold row
             group header when ``as_gt=True``. For guaranteed group
@@ -366,20 +377,22 @@ def summary_table(
         ValueError: If ``variables`` is empty; if any variable's declared
             type is not ``"continuous"``/``"categorical"``; if ``stats`` is
             empty or contains a name not in ``("n", "mean_sd",
-            "median_iqr", "min_max")``; if ``arm_col``, ``by``, or a
-            variable name is not a column in ``df``; or if a variable name
-            collides with ``arm_col``/``by``.
+            "median_iqr", "min_max")``; if ``arm_col``, ``subject_col``,
+            ``by``, or a variable name is not a column in ``df``; or if a
+            variable name collides with ``arm_col``/``by``.
 
     Examples:
         >>> table = summary_table(
         ...     df,
         ...     variables={"AGE": "continuous", "ETHNIC": "categorical"},
         ...     arm_col="ARM",
+        ...     subject_col="USUBJID",
         ... )
         >>> gt = summary_table(
         ...     df,
         ...     variables={"AGE": "continuous", "SEX": "categorical"},
         ...     arm_col="ARM",
+        ...     subject_col="USUBJID",
         ...     by="SITE",
         ...     as_gt=True,
         ...     title="Baseline Characteristics",
@@ -408,6 +421,8 @@ def summary_table(
         )
     if arm_col not in df.columns:
         raise ValueError(f"arm_col={arm_col!r} is not a column in `df`.")
+    if subject_col not in df.columns:
+        raise ValueError(f"subject_col={subject_col!r} is not a column in `df`.")
     if by is not None and by not in df.columns:
         raise ValueError(f"by={by!r} is not a column in `df`.")
     reserved = {arm_col} | ({by} if by is not None else set())
@@ -446,26 +461,24 @@ def summary_table(
         return table
 
     def _categorical_block(var: str) -> pd.DataFrame:
-        group_cols = ([by] if by is not None else []) + [arm_col]
-        denom_lookup = df.groupby(group_cols, observed=True).size()
-
-        def _n_pct(d: pd.DataFrame) -> str:
-            n = len(d)
-            key = (
-                (d[by].iat[0], d[arm_col].iat[0])
-                if by is not None
-                else d[arm_col].iat[0]
-            )
-            denom = denom_lookup.loc[key]
+        # Percentage denominator = unique-subject count at the Arm split
+        # (i.e. the arm's total, one level up from the Level split below
+        # it) via AnalysisTree's existing denom=/_N mechanism — the same
+        # primitive used elsewhere in the library for proportions, rather
+        # than a bespoke lookup. Arm is split *before* Level so that _N[-2]
+        # at the Level leaf is the arm (or by+arm) total, not the level's
+        # own count.
+        def _n_pct(_N: list) -> str:
+            n, denom = _N[-1], _N[-2]
             pct = 100 * n / denom if denom else float("nan")
             return f"{n} ({pct:.0f}%)"
 
-        tree = AnalysisTree()
+        tree = AnalysisTree(denom=subject_col)
         if by is not None:
             tree = tree.split_by(f"df.{by}", label="By")
         tree = (
-            tree.split_by(f"df.{var}", label="Level")
-            .split_by(f"df.{arm_col}", label="Arm")
+            tree.split_by(f"df.{arm_col}", label="Arm")
+            .split_by(f"df.{var}", label="Level")
             .analyze_by(n_pct=_n_pct)
         )
         result = tree.run(df)

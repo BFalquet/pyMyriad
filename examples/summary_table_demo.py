@@ -47,6 +47,7 @@ table = summary_table(
     df,
     variables={"AGE": "continuous", "ETHNIC": "categorical"},
     arm_col="ARM",
+    subject_col="USUBJID",
     by="SEX",
 )
 
@@ -60,6 +61,7 @@ gt = summary_table(
     df,
     variables={"AGE": "continuous", "ETHNIC": "categorical"},
     arm_col="ARM",
+    subject_col="USUBJID",
     by="SEX",
     as_gt=True,
     title="Baseline Characteristics",

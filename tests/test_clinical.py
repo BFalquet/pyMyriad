@@ -383,7 +383,9 @@ def demo_df():
 
 def test_summary_continuous_only_returns_dataframe(demo_df):
     """Regression test for #76: continuous-only call returns a DataFrame."""
-    table = summary_table(demo_df, variables={"AGE": "continuous"}, arm_col="ARM")
+    table = summary_table(
+        demo_df, variables={"AGE": "continuous"}, arm_col="ARM", subject_col="USUBJID"
+    )
     assert isinstance(table, pd.DataFrame)
     assert list(table.columns) == ["Variable", "Statistic", "Placebo", "Active"]
     assert len(table) == 4
@@ -392,7 +394,12 @@ def test_summary_continuous_only_returns_dataframe(demo_df):
 
 def test_summary_categorical_only_row_per_level(demo_df):
     """Regression test for #76: categorical variables get one row per observed level."""
-    table = summary_table(demo_df, variables={"ETHNIC": "categorical"}, arm_col="ARM")
+    table = summary_table(
+        demo_df,
+        variables={"ETHNIC": "categorical"},
+        arm_col="ARM",
+        subject_col="USUBJID",
+    )
     assert len(table) == 3
     assert set(table["Statistic"]) == {"White", "Black", "Other"}
 
@@ -403,11 +410,33 @@ def test_summary_percentage_denominator_is_arm_total(demo_df):
     Placebo arm (S1-S6): ETHNIC = White, White, Black, White, Black, Other
     -> White 3/6=50%, Black 2/6=33%, Other 1/6=17%.
     """
-    table = summary_table(demo_df, variables={"ETHNIC": "categorical"}, arm_col="ARM")
+    table = summary_table(
+        demo_df,
+        variables={"ETHNIC": "categorical"},
+        arm_col="ARM",
+        subject_col="USUBJID",
+    )
     row = table[table["Statistic"] == "White"].iloc[0]
     assert row["Placebo"] == "3 (50%)"
     row = table[table["Statistic"] == "Black"].iloc[0]
     assert row["Placebo"] == "2 (33%)"
+
+
+def test_summary_percentage_uses_unique_subject_count(demo_df):
+    """Regression test for #76: denominator counts unique subject_col, not raw rows.
+
+    Duplicating S1's row (already White/Placebo) must not change the
+    denominator or numerator, since S1 is still the same one subject.
+    """
+    dup_df = pd.concat([demo_df, demo_df.iloc[[0]]], ignore_index=True)
+    table = summary_table(
+        dup_df,
+        variables={"ETHNIC": "categorical"},
+        arm_col="ARM",
+        subject_col="USUBJID",
+    )
+    row = table[table["Statistic"] == "White"].iloc[0]
+    assert row["Placebo"] == "3 (50%)"
 
 
 def test_summary_mixed_continuous_and_categorical(demo_df):
@@ -416,6 +445,7 @@ def test_summary_mixed_continuous_and_categorical(demo_df):
         demo_df,
         variables={"AGE": "continuous", "ETHNIC": "categorical"},
         arm_col="ARM",
+        subject_col="USUBJID",
     )
     assert len(table) == 7  # 4 AGE stat rows + 3 ETHNIC level rows
     assert list(table["Variable"]) == ["AGE"] * 4 + ["ETHNIC"] * 3
@@ -427,20 +457,27 @@ def test_summary_variable_order_follows_dict_order(demo_df):
         demo_df,
         variables={"ETHNIC": "categorical", "AGE": "continuous"},
         arm_col="ARM",
+        subject_col="USUBJID",
     )
     assert list(pd.unique(table["Variable"])) == ["ETHNIC", "AGE"]
 
 
 def test_summary_by_none_has_no_by_column(demo_df):
     """Regression test for #76: by=None (default) produces no "By" column."""
-    table = summary_table(demo_df, variables={"AGE": "continuous"}, arm_col="ARM")
+    table = summary_table(
+        demo_df, variables={"AGE": "continuous"}, arm_col="ARM", subject_col="USUBJID"
+    )
     assert "By" not in table.columns
 
 
 def test_summary_by_given_adds_by_column(demo_df):
     """Regression test for #76: by=<col> adds a "By" column stratifying the blocks."""
     table = summary_table(
-        demo_df, variables={"AGE": "continuous"}, arm_col="ARM", by="SEX"
+        demo_df,
+        variables={"AGE": "continuous"},
+        arm_col="ARM",
+        subject_col="USUBJID",
+        by="SEX",
     )
     assert list(table.columns) == ["By", "Variable", "Statistic", "Placebo", "Active"]
     assert list(pd.unique(table["By"])) == ["Male", "Female"]
@@ -455,6 +492,7 @@ def test_summary_by_percentage_denominator_is_by_arm_total(demo_df):
         demo_df,
         variables={"ETHNIC": "categorical"},
         arm_col="ARM",
+        subject_col="USUBJID",
         by="SEX",
     )
     row = table[(table["By"] == "Male") & (table["Statistic"] == "White")].iloc[0]
@@ -469,6 +507,7 @@ def test_summary_missing_level_in_arm_is_nan(demo_df):
         demo_df,
         variables={"ETHNIC": "categorical"},
         arm_col="ARM",
+        subject_col="USUBJID",
         by="SEX",
     )
     row = table[(table["By"] == "Male") & (table["Statistic"] == "Other")].iloc[0]
@@ -480,6 +519,7 @@ def test_summary_by_ordering_follows_categorical():
     """Regression test for #76 (relies on #61): By order follows categories, not alphabetical."""
     df = pd.DataFrame(
         {
+            "USUBJID": ["S1", "S2", "S3", "S4"],
             "ARM": ["A", "A", "A", "A"],
             "SEX": pd.Categorical(
                 ["Female", "Male", "Female", "Male"],
@@ -489,7 +529,13 @@ def test_summary_by_ordering_follows_categorical():
             "AGE": [10.0, 20.0, 30.0, 40.0],
         }
     )
-    table = summary_table(df, variables={"AGE": "continuous"}, arm_col="ARM", by="SEX")
+    table = summary_table(
+        df,
+        variables={"AGE": "continuous"},
+        arm_col="ARM",
+        subject_col="USUBJID",
+        by="SEX",
+    )
     assert list(pd.unique(table["By"])) == ["Female", "Male"]
 
 
@@ -497,6 +543,7 @@ def test_summary_arm_ordering_follows_categorical():
     """Regression test for #76 (relies on #61): Arm column order follows categories."""
     df = pd.DataFrame(
         {
+            "USUBJID": ["S1", "S2", "S3", "S4"],
             "ARM": pd.Categorical(
                 ["Active", "Active", "Placebo", "Placebo"],
                 categories=["Active", "Placebo"],
@@ -505,8 +552,29 @@ def test_summary_arm_ordering_follows_categorical():
             "AGE": [10.0, 20.0, 30.0, 40.0],
         }
     )
-    table = summary_table(df, variables={"AGE": "continuous"}, arm_col="ARM")
+    table = summary_table(
+        df, variables={"AGE": "continuous"}, arm_col="ARM", subject_col="USUBJID"
+    )
     assert list(table.columns) == ["Variable", "Statistic", "Active", "Placebo"]
+
+
+def test_summary_categorical_level_ordering_follows_categorical():
+    """Regression test for #76 (relies on #61): categorical level order follows categories."""
+    df = pd.DataFrame(
+        {
+            "USUBJID": ["S1", "S2", "S3", "S4"],
+            "ARM": ["A", "A", "A", "A"],
+            "ETHNIC": pd.Categorical(
+                ["White", "Black", "White", "Other"],
+                categories=["Other", "White", "Black"],
+                ordered=True,
+            ),
+        }
+    )
+    table = summary_table(
+        df, variables={"ETHNIC": "categorical"}, arm_col="ARM", subject_col="USUBJID"
+    )
+    assert list(table["Statistic"]) == ["Other", "White", "Black"]
 
 
 def test_summary_stats_subset_and_order(demo_df):
@@ -515,6 +583,7 @@ def test_summary_stats_subset_and_order(demo_df):
         demo_df,
         variables={"AGE": "continuous"},
         arm_col="ARM",
+        subject_col="USUBJID",
         stats=("min_max", "n"),
     )
     assert list(table["Statistic"]) == ["Min, Max", "n"]
@@ -524,11 +593,14 @@ def test_summary_single_observed_level():
     """A categorical variable with only one observed level renders '(100%)'."""
     df = pd.DataFrame(
         {
+            "USUBJID": ["S1", "S2", "S3"],
             "ARM": ["A", "A", "A"],
             "SEX": ["Male", "Male", "Male"],
         }
     )
-    table = summary_table(df, variables={"SEX": "categorical"}, arm_col="ARM")
+    table = summary_table(
+        df, variables={"SEX": "categorical"}, arm_col="ARM", subject_col="USUBJID"
+    )
     assert len(table) == 1
     assert table.iloc[0]["A"] == "3 (100%)"
 
@@ -537,11 +609,14 @@ def test_summary_continuous_all_nan_in_one_group():
     """A continuous variable entirely NaN in one arm renders 'NA' cells, no crash."""
     df = pd.DataFrame(
         {
+            "USUBJID": ["S1", "S2", "S3"],
             "ARM": ["A", "A", "B"],
             "AGE": [10.0, 20.0, np.nan],
         }
     )
-    table = summary_table(df, variables={"AGE": "continuous"}, arm_col="ARM")
+    table = summary_table(
+        df, variables={"AGE": "continuous"}, arm_col="ARM", subject_col="USUBJID"
+    )
     row = table[table["Statistic"] == "Mean (SD)"].iloc[0]
     assert row["B"] == "NA"
 
@@ -554,6 +629,7 @@ def test_summary_as_gt_returns_gt(demo_df):
         demo_df,
         variables={"AGE": "continuous", "ETHNIC": "categorical"},
         arm_col="ARM",
+        subject_col="USUBJID",
         as_gt=True,
     )
     assert isinstance(result, GT)
@@ -567,6 +643,7 @@ def test_summary_as_gt_with_by_builds(demo_df):
         demo_df,
         variables={"AGE": "continuous", "ETHNIC": "categorical"},
         arm_col="ARM",
+        subject_col="USUBJID",
         by="SEX",
         as_gt=True,
         title="Baseline Characteristics",
@@ -577,44 +654,84 @@ def test_summary_as_gt_with_by_builds(demo_df):
 def test_summary_empty_variables_raises(demo_df):
     """Regression test for #76: empty `variables` is rejected up front."""
     with pytest.raises(ValueError):
-        summary_table(demo_df, variables={}, arm_col="ARM")
+        summary_table(demo_df, variables={}, arm_col="ARM", subject_col="USUBJID")
 
 
 def test_summary_unknown_variable_type_raises(demo_df):
     """Regression test for #76: an invalid variable type raises with a clear message."""
     with pytest.raises(ValueError, match="numeric"):
-        summary_table(demo_df, variables={"AGE": "numeric"}, arm_col="ARM")
+        summary_table(
+            demo_df,
+            variables={"AGE": "numeric"},
+            arm_col="ARM",
+            subject_col="USUBJID",
+        )
 
 
 def test_summary_variable_collides_with_arm_col_raises(demo_df):
     """A variable name that collides with arm_col is rejected."""
     with pytest.raises(ValueError):
-        summary_table(demo_df, variables={"ARM": "categorical"}, arm_col="ARM")
+        summary_table(
+            demo_df,
+            variables={"ARM": "categorical"},
+            arm_col="ARM",
+            subject_col="USUBJID",
+        )
 
 
 def test_summary_by_not_in_df_raises(demo_df):
     """Regression test for #76: a nonexistent `by` column fails fast."""
     with pytest.raises(ValueError):
         summary_table(
-            demo_df, variables={"AGE": "continuous"}, arm_col="ARM", by="NOPE"
+            demo_df,
+            variables={"AGE": "continuous"},
+            arm_col="ARM",
+            subject_col="USUBJID",
+            by="NOPE",
         )
 
 
 def test_summary_variable_not_in_df_raises(demo_df):
     """A variable name not present in `df` fails fast."""
     with pytest.raises(ValueError):
-        summary_table(demo_df, variables={"NOPE": "continuous"}, arm_col="ARM")
+        summary_table(
+            demo_df,
+            variables={"NOPE": "continuous"},
+            arm_col="ARM",
+            subject_col="USUBJID",
+        )
+
+
+def test_summary_subject_col_not_in_df_raises(demo_df):
+    """Regression test for #76: a nonexistent `subject_col` fails fast."""
+    with pytest.raises(ValueError):
+        summary_table(
+            demo_df,
+            variables={"AGE": "continuous"},
+            arm_col="ARM",
+            subject_col="NOPE",
+        )
 
 
 def test_summary_unknown_stat_raises(demo_df):
     """Regression test for #76: an invalid stat name raises with a clear message."""
     with pytest.raises(ValueError, match="mean"):
         summary_table(
-            demo_df, variables={"AGE": "continuous"}, arm_col="ARM", stats=("mean",)
+            demo_df,
+            variables={"AGE": "continuous"},
+            arm_col="ARM",
+            subject_col="USUBJID",
+            stats=("mean",),
         )
 
 
 def test_summary_empty_stats_raises(demo_df):
     """Regression test for #76: empty `stats` is rejected up front."""
     with pytest.raises(ValueError):
-        summary_table(demo_df, variables={"AGE": "continuous"}, arm_col="ARM", stats=())
+        summary_table(
+            demo_df,
+            variables={"AGE": "continuous"},
+            arm_col="ARM",
+            subject_col="USUBJID",
+            stats=(),
+        )
