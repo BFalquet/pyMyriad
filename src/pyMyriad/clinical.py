@@ -88,13 +88,12 @@ def lab_summary_table(
     paired ``Change from Baseline``.
 
     Internally this wraps ``change_from_baseline()`` to compute paired
-    change, an ``AnalysisTree`` split by visit and arm to compute every
-    (value, change) x statistic combination as a named, pre-formatted
-    string statistic, ``simple_table(..., by="Arm", pivot_statistics=True)``
-    to pivot Arm to columns, and a wide-to-long ``pandas`` reshape to turn
-    the requested statistics into separate rows per visit — pyMyriad's
-    tree/pivot machinery only pivots one axis into columns, so stacking
-    statistics as rows is done here with plain pandas.
+    change, then an ``AnalysisTree`` split by visit and arm with two
+    ``analyze_by(label=...)`` calls — one for the observed value, one for
+    the change — computing each requested statistic as a pre-formatted
+    string. ``simple_table(..., by=["Arm", "Analysis"], pivot_statistics=False)``
+    then pivots both the Arm split and the Value/Change metric into columns
+    in a single call, leaving the statistics as rows.
 
     Visit and Arm row/column ordering follows the categorical dtype order
     of ``visit_col``/``arm_col`` when present; otherwise order of first
@@ -191,47 +190,45 @@ def lab_summary_table(
         result_col=change_col,
     )
 
-    analyze_kwargs = {}
-    for stat in stats:
-        fmt = _STAT_FORMATTERS[stat]
-        analyze_kwargs[f"value_{stat}"] = lambda d, _fmt=fmt: _fmt(d[value_col])
-        analyze_kwargs[f"change_{stat}"] = lambda d, _fmt=fmt: _fmt(d[change_col])
+    # One analyze_by() per metric: same formatted statistics, computed on the
+    # observed value vs. the change column. The label= tags which metric each
+    # result belongs to, so by=["Arm", "Analysis"] can later pivot both the Arm
+    # split and the Value/Change metric into columns in a single simple_table()
+    # call, leaving the statistics as rows (pivot_statistics=False).
+    def _kwargs(col):
+        return {
+            stat: (lambda d, _fmt=_STAT_FORMATTERS[stat], _c=col: _fmt(d[_c]))
+            for stat in stats
+        }
 
     tree = (
         AnalysisTree()
         .split_by(f"df.{visit_col}", label="Visit")
         .split_by(f"df.{arm_col}", label="Arm")
-        .analyze_by(**analyze_kwargs, label="Lab Summary")
+        .analyze_by(**_kwargs(value_col), label="Value")
+        .analyze_by(**_kwargs(change_col), label="Change")
     )
     result = tree.run(df)
 
-    wide = simple_table(result, by="Arm", pivot_statistics=True)
-    wide = wide.drop(columns=["_Level_0"]).rename(columns={"_Level_1": "Visit"})
+    table = simple_table(
+        result,
+        by=["Arm", "Analysis"],
+        pivot_statistics=False,
+        suppress_duplicates=False,
+    )
+    table = (
+        table.drop(columns=["_Level_0"])
+        .rename(columns={"_Level_1": "Visit"})
+        .rename(columns={c: c.replace(" > ", "||") for c in table.columns})
+    )
+    table["Statistic"] = table["Statistic"].map(_STAT_LABELS)
 
     arm_levels = list(pd.unique(df[arm_col]))
-
-    blocks = []
-    for stat in stats:
-        block = {"Visit": wide["Visit"], "Statistic": _STAT_LABELS[stat]}
-        for arm in arm_levels:
-            block[f"{arm}||Value"] = wide[f"{arm}||value_{stat}"]
-            block[f"{arm}||Change"] = wide[f"{arm}||change_{stat}"]
-        blocks.append(pd.DataFrame(block))
-
-    table = pd.concat(blocks, ignore_index=True)
-
-    visit_order = {v: i for i, v in enumerate(pd.unique(wide["Visit"]))}
-    stat_order = {_STAT_LABELS[s]: i for i, s in enumerate(stats)}
-    table = table.sort_values(
-        ["Visit", "Statistic"],
-        key=lambda s: s.map(visit_order) if s.name == "Visit" else s.map(stat_order),
-        kind="stable",
-    ).reset_index(drop=True)
-
     ordered_cols = ["Visit", "Statistic"] + [
         f"{arm}||{v}" for arm in arm_levels for v in ("Value", "Change")
     ]
     table = table[ordered_cols]
+    table.columns.name = None
 
     if not as_gt:
         return table
