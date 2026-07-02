@@ -29,6 +29,7 @@ pyMyriad — hierarchical analysis tree framework for stratified data analysis.
 
 **Clinical tables**
   lab_summary_table      Canonical clinical-trial lab table (Visit x Statistic rows, Arm x Value/Change columns).
+  summary_table          Demographics / baseline-characteristics ("Table 1") table (Variable rows, Arm columns).
 
 Typical workflow::
 
@@ -50,7 +51,7 @@ from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
 from .plots import forest_plot, distribution_plot
 from .listing import gt_table, simple_table, cascade_table
 from .tabular import format_statistics, change_from_baseline
-from .clinical import lab_summary_table
+from .clinical import lab_summary_table, summary_table
 
 __all__ = [
     "AnalysisTree",
@@ -68,4 +69,5 @@ __all__ = [
     "format_statistics",
     "change_from_baseline",
     "lab_summary_table",
+    "summary_table",
 ]
