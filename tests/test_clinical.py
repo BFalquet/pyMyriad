@@ -387,9 +387,16 @@ def test_summary_continuous_only_returns_dataframe(demo_df):
         demo_df, variables={"AGE": "continuous"}, arm_col="ARM", subject_col="USUBJID"
     )
     assert isinstance(table, pd.DataFrame)
-    assert list(table.columns) == ["Variable", "Statistic", "Placebo", "Active"]
+    assert list(table.columns) == [
+        "Variable",
+        "Level",
+        "Statistic",
+        "Placebo",
+        "Active",
+    ]
     assert len(table) == 4
     assert (table["Variable"] == "AGE").all()
+    assert (table["Level"] == "").all()
 
 
 def test_summary_categorical_only_row_per_level(demo_df):
@@ -401,7 +408,8 @@ def test_summary_categorical_only_row_per_level(demo_df):
         subject_col="USUBJID",
     )
     assert len(table) == 3
-    assert set(table["Statistic"]) == {"White", "Black", "Other"}
+    assert set(table["Level"]) == {"White", "Black", "Other"}
+    assert (table["Statistic"] == "n (pct)").all()
 
 
 def test_summary_percentage_denominator_is_arm_total(demo_df):
@@ -416,9 +424,9 @@ def test_summary_percentage_denominator_is_arm_total(demo_df):
         arm_col="ARM",
         subject_col="USUBJID",
     )
-    row = table[table["Statistic"] == "White"].iloc[0]
+    row = table[table["Level"] == "White"].iloc[0]
     assert row["Placebo"] == "3 (50%)"
-    row = table[table["Statistic"] == "Black"].iloc[0]
+    row = table[table["Level"] == "Black"].iloc[0]
     assert row["Placebo"] == "2 (33%)"
 
 
@@ -435,7 +443,7 @@ def test_summary_percentage_uses_unique_subject_count(demo_df):
         arm_col="ARM",
         subject_col="USUBJID",
     )
-    row = table[table["Statistic"] == "White"].iloc[0]
+    row = table[table["Level"] == "White"].iloc[0]
     assert row["Placebo"] == "3 (50%)"
 
 
@@ -479,7 +487,14 @@ def test_summary_by_given_adds_by_column(demo_df):
         subject_col="USUBJID",
         by="SEX",
     )
-    assert list(table.columns) == ["By", "Variable", "Statistic", "Placebo", "Active"]
+    assert list(table.columns) == [
+        "By",
+        "Variable",
+        "Level",
+        "Statistic",
+        "Placebo",
+        "Active",
+    ]
     assert list(pd.unique(table["By"])) == ["Male", "Female"]
 
 
@@ -495,9 +510,9 @@ def test_summary_by_percentage_denominator_is_by_arm_total(demo_df):
         subject_col="USUBJID",
         by="SEX",
     )
-    row = table[(table["By"] == "Male") & (table["Statistic"] == "White")].iloc[0]
+    row = table[(table["By"] == "Male") & (table["Level"] == "White")].iloc[0]
     assert row["Placebo"] == "2 (67%)"
-    row = table[(table["By"] == "Male") & (table["Statistic"] == "Black")].iloc[0]
+    row = table[(table["By"] == "Male") & (table["Level"] == "Black")].iloc[0]
     assert row["Placebo"] == "1 (33%)"
 
 
@@ -510,7 +525,7 @@ def test_summary_missing_level_in_arm_is_nan(demo_df):
         subject_col="USUBJID",
         by="SEX",
     )
-    row = table[(table["By"] == "Male") & (table["Statistic"] == "Other")].iloc[0]
+    row = table[(table["By"] == "Male") & (table["Level"] == "Other")].iloc[0]
     assert pd.isna(row["Placebo"])
     assert row["Active"] == "1 (33%)"
 
@@ -555,7 +570,13 @@ def test_summary_arm_ordering_follows_categorical():
     table = summary_table(
         df, variables={"AGE": "continuous"}, arm_col="ARM", subject_col="USUBJID"
     )
-    assert list(table.columns) == ["Variable", "Statistic", "Active", "Placebo"]
+    assert list(table.columns) == [
+        "Variable",
+        "Level",
+        "Statistic",
+        "Active",
+        "Placebo",
+    ]
 
 
 def test_summary_categorical_level_ordering_follows_categorical():
@@ -574,7 +595,7 @@ def test_summary_categorical_level_ordering_follows_categorical():
     table = summary_table(
         df, variables={"ETHNIC": "categorical"}, arm_col="ARM", subject_col="USUBJID"
     )
-    assert list(table["Statistic"]) == ["Other", "White", "Black"]
+    assert list(table["Level"]) == ["Other", "White", "Black"]
 
 
 def test_summary_stats_subset_and_order(demo_df):
@@ -715,14 +736,31 @@ def test_summary_subject_col_not_in_df_raises(demo_df):
 
 def test_summary_unknown_stat_raises(demo_df):
     """Regression test for #76: an invalid stat name raises with a clear message."""
-    with pytest.raises(ValueError, match="mean"):
+    with pytest.raises(ValueError, match="average"):
         summary_table(
             demo_df,
             variables={"AGE": "continuous"},
             arm_col="ARM",
             subject_col="USUBJID",
-            stats=("mean",),
+            stats=("average",),
         )
+
+
+def test_summary_raw_continuous_stat(demo_df):
+    """Regression test for #76: raw (non-combo) continuous stats are supported directly.
+
+    "mean" is a predefined raw statistic (via multi_simple_analysis's
+    CONTINUOUS_SIMPLE_FUNCTIONS), not a formatted "Mean (SD)" combo string.
+    """
+    table = summary_table(
+        demo_df,
+        variables={"AGE": "continuous"},
+        arm_col="ARM",
+        subject_col="USUBJID",
+        stats=("mean",),
+    )
+    assert len(table) == 1
+    assert table.iloc[0]["Statistic"] == "mean"
 
 
 def test_summary_empty_stats_raises(demo_df):

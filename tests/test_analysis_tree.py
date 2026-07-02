@@ -445,3 +445,142 @@ def test_analysis_tree_id_deprecated():
     assert issubclass(w[0].category, DeprecationWarning)
     assert "denom" in str(w[0].message).lower()
     assert tree.denom == "ID"
+
+
+# multi_simple_analysis
+
+
+@pytest.fixture
+def multi_df():
+    """6 subjects x 2 arms, one continuous (AGE) and one categorical (SEX) variable."""
+    return pd.DataFrame(
+        {
+            "USUBJID": ["S1", "S2", "S3", "S4", "S5", "S6"],
+            "ARM": ["Placebo", "Placebo", "Placebo", "Active", "Active", "Active"],
+            "AGE": [40.0, 45.0, 50.0, 42.0, 47.0, 52.0],
+            "SEX": ["Male", "Male", "Female", "Male", "Female", "Female"],
+        }
+    )
+
+
+def test_multi_simple_analysis_builds_parallel_branches(multi_df):
+    """Regression test for #76: one sibling node per variable, tree reflects the layout.
+
+    A continuous variable becomes a single AnalysisNode; a categorical
+    variable becomes a SplitNode (one child per observed level).
+    """
+    tree = (
+        AnalysisTree(denom="USUBJID")
+        .split_by("df.ARM", label="Arm")
+        .multi_simple_analysis(
+            var={"AGE": "continuous", "SEX": "categorical"},
+            continuous_fun=["n", "mean"],
+            categorical_fun=["n (pct)"],
+        )
+    )
+    arm_node = tree[0]
+    assert len(arm_node) == 2
+    kinds = {type(n).__name__ for n in arm_node}
+    assert kinds == {"AnalysisNode", "SplitNode"}
+
+    age_node = next(n for n in arm_node if getattr(n, "label", None) == "AGE")
+    assert isinstance(age_node, AnalysisNode)
+    assert set(age_node.analysis) == {"n", "mean"}
+
+    sex_node = next(n for n in arm_node if getattr(n, "label", None) == "SEX")
+    assert len(sex_node) == 1  # one AnalysisNode child, split levels come from data
+
+
+def test_multi_simple_analysis_continuous_values(multi_df):
+    """Continuous predefined functions compute correct raw values."""
+    tree = (
+        AnalysisTree()
+        .split_by("df.ARM", label="Arm")
+        .multi_simple_analysis(var={"AGE": "continuous"}, continuous_fun=["n", "mean"])
+    )
+    result = tree.run(multi_df)
+    placebo = result["Arm"]["Placebo"]["AGE"]
+    assert placebo.summary["n"] == 3
+    assert placebo.summary["mean"] == pytest.approx(45.0)
+
+
+def test_multi_simple_analysis_categorical_percentage(multi_df):
+    """Regression test for #76: categorical n (pct) uses denom=/_N for the arm total.
+
+    Placebo arm: SEX = Male, Male, Female -> Male 2/3, Female 1/3.
+    """
+    tree = (
+        AnalysisTree(denom="USUBJID")
+        .split_by("df.ARM", label="Arm")
+        .multi_simple_analysis(var={"SEX": "categorical"})
+    )
+    result = tree.run(multi_df)
+    male = result["Arm"]["Placebo"]["SEX"]["Male"]["SEX"]
+    assert male.summary["n (pct)"] == "2 (67%)"
+
+
+def test_multi_simple_analysis_categorical_n_no_denom_needed(multi_df):
+    """The plain categorical "n" function works without denom= being set."""
+    tree = (
+        AnalysisTree()
+        .split_by("df.ARM", label="Arm")
+        .multi_simple_analysis(var={"SEX": "categorical"}, categorical_fun=["n"])
+    )
+    result = tree.run(multi_df)
+    male = result["Arm"]["Placebo"]["SEX"]["Male"]["SEX"]
+    assert male.summary["n"] == 2
+
+
+def test_multi_simple_analysis_n_pct_without_denom_raises():
+    """Regression test for #76: "n (pct)" without denom= set fails fast on AnalysisTree."""
+    with pytest.raises(ValueError, match="denom"):
+        AnalysisTree().split_by("df.ARM", label="Arm").multi_simple_analysis(
+            var={"SEX": "categorical"}, categorical_fun=["n (pct)"]
+        )
+
+
+def test_multi_simple_analysis_empty_var_raises():
+    """Regression test for #76: an empty `var` dict is rejected up front."""
+    with pytest.raises(ValueError):
+        AnalysisTree().split_by("df.ARM").multi_simple_analysis(var={})
+
+
+def test_multi_simple_analysis_unknown_type_raises():
+    """An invalid variable type raises a clear ValueError."""
+    with pytest.raises(ValueError, match="numeric"):
+        AnalysisTree().split_by("df.ARM").multi_simple_analysis(var={"AGE": "numeric"})
+
+
+def test_multi_simple_analysis_unknown_continuous_fun_raises():
+    """An invalid continuous_fun name raises a clear ValueError."""
+    with pytest.raises(ValueError, match="average"):
+        AnalysisTree().split_by("df.ARM").multi_simple_analysis(
+            var={"AGE": "continuous"}, continuous_fun=["average"]
+        )
+
+
+def test_multi_simple_analysis_unknown_categorical_fun_raises():
+    """An invalid categorical_fun name raises a clear ValueError."""
+    with pytest.raises(ValueError, match="proportion"):
+        AnalysisTree(denom="USUBJID").split_by("df.ARM").multi_simple_analysis(
+            var={"SEX": "categorical"}, categorical_fun=["proportion"]
+        )
+
+
+def test_multi_simple_analysis_can_follow_terminal_analyze_by(multi_df):
+    """Regression test for #76: a prior terminal analyze_by() doesn't block this method.
+
+    Plain split_by() cannot add a sibling split once a terminal analyze_by()
+    node exists at a branch; multi_simple_analysis() builds and appends
+    nodes directly, so it isn't blocked by that guard.
+    """
+    tree = (
+        AnalysisTree(denom="USUBJID")
+        .split_by("df.ARM", label="Arm")
+        .analyze_by(existing=lambda df: len(df))
+        .multi_simple_analysis(var={"SEX": "categorical"})
+    )
+    result = tree.run(multi_df)
+    arm_node = result["Arm"]["Placebo"]
+    assert "SEX" in arm_node
+    assert arm_node["0"].summary["existing"] == 3

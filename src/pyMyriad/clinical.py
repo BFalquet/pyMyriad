@@ -302,28 +302,24 @@ def summary_table(
     are the variables listed in ``variables``, each summarized according to
     its declared type. Continuous variables (e.g. ``AGE``) get one block of
     statistic rows (``n`` / ``Mean (SD)`` / ``Median (Q1, Q3)`` / ``Min,
-    Max``, reusing the same formatters as ``lab_summary_table()``).
-    Categorical variables (e.g. ``SEX``) get one row per observed category
-    level, formatted as ``"n (pct%)"``, where the percentage denominator is
-    the count of unique ``subject_col`` values in that level's Arm total
-    (and, if ``by`` is given, Arm-within-``by`` total) — not the level's own
-    count. Using unique-subject counts (rather than raw row counts) keeps
-    percentages correct even if ``df`` has more than one row per subject.
+    Max`` by default). Categorical variables (e.g. ``SEX``) get one row per
+    observed category level, formatted as ``"n (pct%)"``, where the
+    percentage denominator is the count of unique ``subject_col`` values in
+    that level's Arm total (and, if ``by`` is given, Arm-within-``by``
+    total) — not the level's own count.
 
     ``variables`` declares each column's type explicitly; this function
     never infers type from dtype, since e.g. an integer-coded categorical
     variable (a Likert scale) would otherwise be misdetected as continuous.
 
-    Because continuous and categorical variables produce a different number
-    of rows, they don't naturally share one ``AnalysisTree``. Internally,
-    one small tree + ``simple_table(..., by=arm_col, pivot_statistics=False)``
-    block is built per variable, then all blocks are vertically concatenated
-    in ``variables`` dict order — the same "build small table, then combine"
-    shape ``lab_summary_table()`` uses internally for its Visit rows. The
-    categorical block's percentage denominator reuses ``AnalysisTree``'s
-    existing ``denom=``/``_N`` mechanism (``denom=subject_col``), the same
-    primitive used elsewhere in the library for proportion/rate statistics,
-    rather than a bespoke lookup.
+    Internally this builds a *single* ``AnalysisTree`` — split by ``by``
+    (if given) then ``arm_col`` — and adds one branch per variable via
+    :meth:`AnalysisTree.multi_simple_analysis`, so the tree itself directly
+    reflects the table being built (one labeled branch per variable, a
+    nested split for each categorical variable's levels). A single
+    ``simple_table(..., by="Arm", include_label=True)`` call then flattens
+    the whole tree into one DataFrame in one pass — no per-variable tree,
+    no manual ``pd.concat`` of separately-built blocks.
 
     ``by``/``arm_col`` row/column ordering follows the categorical dtype
     order when present; otherwise order of first appearance in ``df`` is
@@ -349,9 +345,11 @@ def summary_table(
             ordering, pass a ``pd.Categorical`` column. Defaults to
             ``None`` (no stratification).
         stats: Which descriptive-statistic rows to include for continuous
-            variables, and in what order. Must be a non-empty subset of
-            ``("n", "mean_sd", "median_iqr", "min_max")``. Defaults to all
-            four (consistent with ``lab_summary_table``'s default).
+            variables, and in what order — passed through to
+            :meth:`AnalysisTree.multi_simple_analysis` as
+            ``continuous_fun``. Must be a non-empty subset of
+            ``CONTINUOUS_SIMPLE_FUNCTIONS``. Defaults to
+            ``("n", "mean_sd", "median_iqr", "min_max")``.
         as_gt: If True, return a ``great_tables.GT`` object with the ``by``
             groups (if given) rendered as row-group headers and the
             Variable label suppressed on repeated rows, instead of a plain
@@ -361,11 +359,11 @@ def summary_table(
 
     Returns:
         If ``as_gt=False`` (default): a ``pandas.DataFrame`` with columns
-        (``"By"`` if ``by`` is given), ``"Variable"``, ``"Statistic"``, and
-        one column per arm level, one row per (variable, statistic-or-level)
-        combination. A (arm, level) combination with zero observed rows
-        renders as ``NaN`` (consistent with ``lab_summary_table``'s
-        existing behavior for a value missing in one arm), not ``"0 (0%)"``.
+        (``"By"`` if ``by`` is given), ``"Variable"``, ``"Level"``,
+        ``"Statistic"``, and one column per arm level, one row per
+        (variable, statistic-or-level) combination. ``"Level"`` is blank
+        for continuous-variable rows. A (arm, level) combination with zero
+        observed rows renders as ``NaN``, not ``"0 (0%)"``.
 
         If ``as_gt=True``: a ``great_tables.GT`` built from the same table,
         with row groups over ``by`` (if given) and the Variable column
@@ -375,11 +373,11 @@ def summary_table(
 
     Raises:
         ValueError: If ``variables`` is empty; if any variable's declared
-            type is not ``"continuous"``/``"categorical"``; if ``stats`` is
-            empty or contains a name not in ``("n", "mean_sd",
-            "median_iqr", "min_max")``; if ``arm_col``, ``subject_col``,
-            ``by``, or a variable name is not a column in ``df``; or if a
-            variable name collides with ``arm_col``/``by``.
+            type is not ``"continuous"``/``"categorical"``; if ``stats``
+            contains a name not in ``CONTINUOUS_SIMPLE_FUNCTIONS``; if
+            ``arm_col``, ``subject_col``, ``by``, or a variable name is not
+            a column in ``df``; or if a variable name collides with
+            ``arm_col``/``by``.
 
     Examples:
         >>> table = summary_table(
@@ -400,25 +398,9 @@ def summary_table(
 
     See also:
         lab_summary_table: The analogous per-visit lab-value table.
+        AnalysisTree.multi_simple_analysis: The underlying tree-building
+            method, usable directly for custom table layouts.
     """
-    if not variables:
-        raise ValueError("`variables` must be a non-empty dict.")
-    unknown_types = {
-        v for v in variables.values() if v not in ("continuous", "categorical")
-    }
-    if unknown_types:
-        raise ValueError(
-            f"Unknown variable type(s) {sorted(unknown_types)} in `variables`. "
-            'Each value must be "continuous" or "categorical".'
-        )
-    if not stats:
-        raise ValueError("`stats` must be a non-empty tuple.")
-    unknown_stats = set(stats) - set(_STAT_FORMATTERS)
-    if unknown_stats:
-        raise ValueError(
-            f"Unknown statistic name(s) {sorted(unknown_stats)} in `stats`. "
-            f"Valid options are: {sorted(_STAT_FORMATTERS)}."
-        )
     if arm_col not in df.columns:
         raise ValueError(f"arm_col={arm_col!r} is not a column in `df`.")
     if subject_col not in df.columns:
@@ -439,78 +421,44 @@ def summary_table(
 
     arm_levels = list(pd.unique(df[arm_col]))
     by_levels = list(pd.unique(df[by])) if by is not None else None
+    has_categorical = "categorical" in variables.values()
 
-    def _continuous_block(var: str) -> pd.DataFrame:
-        kwargs = {
-            stat: (lambda d, _fmt=_STAT_FORMATTERS[stat], _c=var: _fmt(d[_c]))
-            for stat in stats
-        }
-        tree = AnalysisTree()
-        if by is not None:
-            tree = tree.split_by(f"df.{by}", label="By")
-        tree = tree.split_by(f"df.{arm_col}", label="Arm").analyze_by(**kwargs)
-        result = tree.run(df)
+    tree = AnalysisTree(denom=subject_col)
+    if by is not None:
+        tree = tree.split_by(f"df.{by}", label="By")
+    tree = tree.split_by(f"df.{arm_col}", label="Arm").multi_simple_analysis(
+        var=variables, continuous_fun=stats, categorical_fun=("n (pct)",)
+    )
+    result = tree.run(df)
 
-        table = simple_table(
-            result, by="Arm", pivot_statistics=False, suppress_duplicates=False
+    table = simple_table(
+        result,
+        by="Arm",
+        pivot_statistics=False,
+        suppress_duplicates=False,
+        include_label=True,
+    )
+    table = table.rename(columns={"Analysis": "Variable"})
+
+    if by is not None:
+        table = table.drop(columns=["_Level_0"]).rename(columns={"_Level_1": "By"})
+        level_label_col, level_value_col = "_Level_2", "_Level_3"
+    else:
+        level_label_col, level_value_col = "_Level_0", "_Level_1"
+
+    if has_categorical:
+        table = table.drop(columns=[level_label_col]).rename(
+            columns={level_value_col: "Level"}
         )
-        if by is not None:
-            table = table.drop(columns=["_Level_0"]).rename(columns={"_Level_1": "By"})
-        table["Statistic"] = table["Statistic"].map(_STAT_LABELS)
-        table.insert(0, "Variable", var)
-        return table
+        table.loc[table["Level"] == "--", "Level"] = ""
+    else:
+        table["Level"] = ""
 
-    def _categorical_block(var: str) -> pd.DataFrame:
-        # Percentage denominator = unique-subject count at the Arm split
-        # (i.e. the arm's total, one level up from the Level split below
-        # it) via AnalysisTree's existing denom=/_N mechanism — the same
-        # primitive used elsewhere in the library for proportions, rather
-        # than a bespoke lookup. Arm is split *before* Level so that _N[-2]
-        # at the Level leaf is the arm (or by+arm) total, not the level's
-        # own count.
-        def _n_pct(_N: list) -> str:
-            n, denom = _N[-1], _N[-2]
-            pct = 100 * n / denom if denom else float("nan")
-            return f"{n} ({pct:.0f}%)"
-
-        tree = AnalysisTree(denom=subject_col)
-        if by is not None:
-            tree = tree.split_by(f"df.{by}", label="By")
-        tree = (
-            tree.split_by(f"df.{arm_col}", label="Arm")
-            .split_by(f"df.{var}", label="Level")
-            .analyze_by(n_pct=_n_pct)
-        )
-        result = tree.run(df)
-
-        table = simple_table(
-            result, by="Arm", pivot_statistics=False, suppress_duplicates=False
-        )
-        # The "Statistic" column here just holds the constant analysis name
-        # ("n_pct") — uninformative, and it collides with renaming the
-        # _Level_* column that holds the actual category level into
-        # "Statistic" below, so drop it first.
-        table = table.drop(columns=["Statistic"])
-        if by is not None:
-            table = table.drop(columns=["_Level_0", "_Level_2"]).rename(
-                columns={"_Level_1": "By", "_Level_3": "Statistic"}
-            )
-        else:
-            table = table.drop(columns=["_Level_0"]).rename(
-                columns={"_Level_1": "Statistic"}
-            )
-        table.insert(0, "Variable", var)
-        return table
-
-    blocks = [
-        _continuous_block(var) if vtype == "continuous" else _categorical_block(var)
-        for var, vtype in variables.items()
-    ]
-    table = pd.concat(blocks, ignore_index=True)
+    table["Statistic"] = table["Statistic"].map(lambda s: _STAT_LABELS.get(s, s))
 
     ordered_cols = (
         (["By"] if by is not None else [])
-        + ["Variable", "Statistic"]
+        + ["Variable", "Level", "Statistic"]
         + [str(a) for a in arm_levels]
     )
     table = table[ordered_cols]

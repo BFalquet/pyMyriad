@@ -5,6 +5,10 @@ pyMyriad — hierarchical analysis tree framework for stratified data analysis.
   AnalysisTree   Root container; start here. ``AnalysisTree().split_by(...).analyze_by(...)``
   SplitNode      Represents a data split/stratification step.
   AnalysisNode   Represents a computation step.
+  AnalysisTree.multi_simple_analysis   Add one branch per variable (continuous or
+                 categorical), each dispatched to predefined summary functions —
+                 see ``pyMyriad.analysis_tree.CONTINUOUS_SIMPLE_FUNCTIONS`` /
+                 ``CATEGORICAL_SIMPLE_FUNCTIONS`` for the available names.
 
 **Reading results (results side)**
   DataTree       Root result container returned by ``AnalysisTree.run()``.
