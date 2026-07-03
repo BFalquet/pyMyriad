@@ -4,9 +4,14 @@ Main functions:
 - lab_summary_table(): The canonical clinical-trial lab table — rows are
   Visit x Statistic (n / Mean (SD) / Median (Q1, Q3) / Min-Max), columns
   are treatment Arm x {Value, Change from Baseline}.
+- summary_table(): Demographics / baseline-characteristics ("Table 1")
+  table — rows are a list of variables (continuous or categorical),
+  columns are treatment Arm, optionally stratified into row blocks by
+  another factor (e.g. one block per sex).
 
 See also:
     - examples/lab_summary_table_demo.py: End-to-end usage example.
+    - examples/summary_table_demo.py: End-to-end usage example.
 """
 
 from typing import TYPE_CHECKING, Optional, Union
@@ -276,4 +281,218 @@ def lab_summary_table(
     gt = gt.cols_align(
         align="center", columns=[c for cols in arm_columns.values() for c in cols]
     )
+    return gt
+
+
+def summary_table(
+    df: pd.DataFrame,
+    *,
+    variables: dict[str, str],
+    arm_col: str,
+    subject_col: str,
+    by: Optional[str] = None,
+    stats: tuple[str, ...] = ("n", "mean_sd", "median_iqr", "min_max"),
+    as_gt: bool = False,
+    title: Optional[str] = None,
+    subtitle: Optional[str] = None,
+) -> Union[pd.DataFrame, "GT"]:
+    """Build a demographics / baseline-characteristics ("Table 1") table.
+
+    Produces the standard "Table 1" layout: columns are treatment Arm; rows
+    are the variables listed in ``variables``, each summarized according to
+    its declared type. Continuous variables (e.g. ``AGE``) get one block of
+    statistic rows (``n`` / ``Mean (SD)`` / ``Median (Q1, Q3)`` / ``Min,
+    Max`` by default). Categorical variables (e.g. ``SEX``) get one row per
+    observed category level, formatted as ``"n (pct%)"``, where the
+    percentage denominator is the count of unique ``subject_col`` values in
+    that level's Arm total (and, if ``by`` is given, Arm-within-``by``
+    total) — not the level's own count.
+
+    ``variables`` declares each column's type explicitly; this function
+    never infers type from dtype, since e.g. an integer-coded categorical
+    variable (a Likert scale) would otherwise be misdetected as continuous.
+
+    Internally this builds a *single* ``AnalysisTree`` — split by ``by``
+    (if given) then ``arm_col`` — and adds one branch per variable via
+    :meth:`AnalysisTree.multi_simple_analysis`, so the tree itself directly
+    reflects the table being built (one labeled branch per variable, a
+    nested split for each categorical variable's levels). A single
+    ``simple_table(..., by="Arm", include_label=True)`` call then flattens
+    the whole tree into one DataFrame in one pass — no per-variable tree,
+    no manual ``pd.concat`` of separately-built blocks.
+
+    ``by``/``arm_col`` row/column ordering follows the categorical dtype
+    order when present; otherwise order of first appearance in ``df`` is
+    used.
+
+    Args:
+        df: Subject-level DataFrame, one row per observation (e.g. one row
+            per USUBJID for a standard baseline-characteristics table).
+        variables: Ordered mapping of column name to variable type, e.g.
+            ``{"AGE": "continuous", "SEX": "categorical"}``. Row blocks
+            appear in this dict's order. Each type must be ``"continuous"``
+            or ``"categorical"``. Must be non-empty.
+        arm_col: Column identifying the treatment arm (e.g. ``"ARM"``). For
+            guaranteed arm column ordering, pass a ``pd.Categorical``
+            column.
+        subject_col: Column identifying subjects (e.g. ``"USUBJID"``), used
+            to count unique subjects for categorical variables' percentage
+            denominators via ``AnalysisTree(denom=subject_col)``. Not used
+            for continuous variables' statistics.
+        by: Optional column to stratify rows by (e.g. ``"SEX"`` to produce a
+            separate block of variable rows per sex), rendered as a bold row
+            group header when ``as_gt=True``. For guaranteed group
+            ordering, pass a ``pd.Categorical`` column. Defaults to
+            ``None`` (no stratification).
+        stats: Which descriptive-statistic rows to include for continuous
+            variables, and in what order — passed through to
+            :meth:`AnalysisTree.multi_simple_analysis` as
+            ``continuous_fun``. Must be a non-empty subset of
+            ``CONTINUOUS_SIMPLE_FUNCTIONS``. Defaults to
+            ``("n", "mean_sd", "median_iqr", "min_max")``.
+        as_gt: If True, return a ``great_tables.GT`` object with the ``by``
+            groups (if given) rendered as row-group headers and the
+            Variable label suppressed on repeated rows, instead of a plain
+            DataFrame.
+        title: Title for the GT table. Only used when ``as_gt=True``.
+        subtitle: Subtitle for the GT table. Only used when ``as_gt=True``.
+
+    Returns:
+        If ``as_gt=False`` (default): a ``pandas.DataFrame`` with columns
+        (``"By"`` if ``by`` is given), ``"Variable"``, ``"Level"``,
+        ``"Statistic"``, and one column per arm level, one row per
+        (variable, statistic-or-level) combination. ``"Level"`` is blank
+        for continuous-variable rows. A (arm, level) combination with zero
+        observed rows renders as ``NaN``, not ``"0 (0%)"``.
+
+        If ``as_gt=True``: a ``great_tables.GT`` built from the same table,
+        with row groups over ``by`` (if given) and the Variable column
+        suppressed on repeated rows. Unlike ``lab_summary_table``, no
+        spanners are added, since there is only one metric column per arm
+        here (not Value/Change sub-columns).
+
+    Raises:
+        ValueError: If ``variables`` is empty; if any variable's declared
+            type is not ``"continuous"``/``"categorical"``; if ``stats``
+            contains a name not in ``CONTINUOUS_SIMPLE_FUNCTIONS``; if
+            ``arm_col``, ``subject_col``, ``by``, or a variable name is not
+            a column in ``df``; or if a variable name collides with
+            ``arm_col``/``by``.
+
+    Examples:
+        >>> table = summary_table(
+        ...     df,
+        ...     variables={"AGE": "continuous", "ETHNIC": "categorical"},
+        ...     arm_col="ARM",
+        ...     subject_col="USUBJID",
+        ... )
+        >>> gt = summary_table(
+        ...     df,
+        ...     variables={"AGE": "continuous", "SEX": "categorical"},
+        ...     arm_col="ARM",
+        ...     subject_col="USUBJID",
+        ...     by="SITE",
+        ...     as_gt=True,
+        ...     title="Baseline Characteristics",
+        ... )
+
+    See also:
+        lab_summary_table: The analogous per-visit lab-value table.
+        AnalysisTree.multi_simple_analysis: The underlying tree-building
+            method, usable directly for custom table layouts.
+    """
+    if arm_col not in df.columns:
+        raise ValueError(f"arm_col={arm_col!r} is not a column in `df`.")
+    if subject_col not in df.columns:
+        raise ValueError(f"subject_col={subject_col!r} is not a column in `df`.")
+    if by is not None and by not in df.columns:
+        raise ValueError(f"by={by!r} is not a column in `df`.")
+    reserved = {arm_col} | ({by} if by is not None else set())
+    colliding = set(variables) & reserved
+    if colliding:
+        raise ValueError(
+            f"Variable name(s) {sorted(colliding)} collide with arm_col/by."
+        )
+    for var in variables:
+        if var not in df.columns:
+            raise ValueError(
+                f"Variable {var!r} in `variables` is not a column in `df`."
+            )
+
+    arm_levels = list(pd.unique(df[arm_col]))
+    by_levels = list(pd.unique(df[by])) if by is not None else None
+    has_categorical = "categorical" in variables.values()
+
+    tree = AnalysisTree(denom=subject_col)
+    if by is not None:
+        tree = tree.split_by(f"df.{by}", label="By")
+    tree = tree.split_by(f"df.{arm_col}", label="Arm").multi_simple_analysis(
+        var=variables, continuous_fun=stats, categorical_fun=("n (pct)",)
+    )
+    result = tree.run(df)
+
+    table = simple_table(
+        result,
+        by="Arm",
+        pivot_statistics=False,
+        suppress_duplicates=False,
+        include_label=True,
+    )
+    table = table.rename(columns={"Analysis": "Variable"})
+
+    if by is not None:
+        table = table.drop(columns=["_Level_0"]).rename(columns={"_Level_1": "By"})
+        level_label_col, level_value_col = "_Level_2", "_Level_3"
+    else:
+        level_label_col, level_value_col = "_Level_0", "_Level_1"
+
+    if has_categorical:
+        table = table.drop(columns=[level_label_col]).rename(
+            columns={level_value_col: "Level"}
+        )
+        table.loc[table["Level"] == "--", "Level"] = ""
+    else:
+        table["Level"] = ""
+
+    table["Statistic"] = table["Statistic"].map(lambda s: _STAT_LABELS.get(s, s))
+
+    ordered_cols = (
+        (["By"] if by is not None else [])
+        + ["Variable", "Level", "Statistic"]
+        + [str(a) for a in arm_levels]
+    )
+    table = table[ordered_cols]
+    table.columns.name = None
+
+    var_order = {var: i for i, var in enumerate(variables)}
+    sort_keys = {
+        "_var_sort": table["Variable"].map(var_order),
+        "_row_sort": range(len(table)),
+    }
+    if by is not None:
+        by_order = {lvl: i for i, lvl in enumerate(by_levels)}
+        sort_keys = {"_by_sort": table["By"].map(by_order), **sort_keys}
+    table = (
+        table.assign(**sort_keys)
+        .sort_values(list(sort_keys), kind="stable")
+        .drop(columns=list(sort_keys))
+        .reset_index(drop=True)
+    )
+
+    if not as_gt:
+        return table
+
+    from great_tables import GT
+
+    display_table = table.copy()
+    dup_key = display_table["Variable"]
+    display_table.loc[dup_key == dup_key.shift(1), "Variable"] = ""
+
+    gt = GT(display_table)
+    if by is not None:
+        gt = gt.tab_stub(groupname_col="By")
+        gt = gt.row_group_order(groups=[str(lvl) for lvl in by_levels])
+    if title is not None or subtitle is not None:
+        gt = gt.tab_header(title=title, subtitle=subtitle)
+    gt = gt.cols_align(align="center", columns=[str(a) for a in arm_levels])
     return gt

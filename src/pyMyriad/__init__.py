@@ -5,6 +5,10 @@ pyMyriad — hierarchical analysis tree framework for stratified data analysis.
   AnalysisTree   Root container; start here. ``AnalysisTree().split_by(...).analyze_by(...)``
   SplitNode      Represents a data split/stratification step.
   AnalysisNode   Represents a computation step.
+  AnalysisTree.multi_simple_analysis   Add one branch per variable (continuous or
+                 categorical), each dispatched to predefined summary functions —
+                 see ``pyMyriad.analysis_tree.CONTINUOUS_SIMPLE_FUNCTIONS`` /
+                 ``CATEGORICAL_SIMPLE_FUNCTIONS`` for the available names.
 
 **Reading results (results side)**
   DataTree       Root result container returned by ``AnalysisTree.run()``.
@@ -29,6 +33,7 @@ pyMyriad — hierarchical analysis tree framework for stratified data analysis.
 
 **Clinical tables**
   lab_summary_table      Canonical clinical-trial lab table (Visit x Statistic rows, Arm x Value/Change columns).
+  summary_table          Demographics / baseline-characteristics ("Table 1") table (Variable rows, Arm columns).
 
 Typical workflow::
 
@@ -50,7 +55,7 @@ from .data_tree import DataTree, SplitDataNode, LvlDataNode, DataNode
 from .plots import forest_plot, distribution_plot
 from .listing import gt_table, simple_table, cascade_table
 from .tabular import format_statistics, change_from_baseline
-from .clinical import lab_summary_table
+from .clinical import lab_summary_table, summary_table
 
 __all__ = [
     "AnalysisTree",
@@ -68,4 +73,5 @@ __all__ = [
     "format_statistics",
     "change_from_baseline",
     "lab_summary_table",
+    "summary_table",
 ]
