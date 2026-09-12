@@ -34,3 +34,13 @@ Reusable workflows live in [`.agents/skills/`](.agents/skills/):
 - [`test/`](.agents/skills/test/) — writing and running tests.
 - [`pr-workflow/`](.agents/skills/pr-workflow/) — branch naming, pre-commit, PR description.
 - [`add-analysis/`](.agents/skills/add-analysis/) — adding a new analysis/table/plot function.
+- [`perform-analysis/`](.agents/skills/perform-analysis/) — using pyMyriad to analyze a DataFrame end to end.
+
+## Keep skills and docs in sync
+
+Agent guidance is only useful if it stays current:
+
+- When you add or change a public API or common workflow, update the relevant `.agents/skills/<skill>/SKILL.md`.
+- When you add a new reusable agent workflow, add a new `.agents/skills/<skill>/SKILL.md` and list it here.
+- Keep canonical docs (`ARCHITECTURE.md`, `CONTRIBUTING.md`, `README.md`) up to date; skills should point to them, not duplicate them.
+- If `AGENTS.md` itself needs a new invariant or pointer, update it in the same PR.
