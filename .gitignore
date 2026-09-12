@@ -20,3 +20,5 @@ docs/generated/
 
 # ai prompts
 prompts/
+# Local agent tool configuration
+.claude/
